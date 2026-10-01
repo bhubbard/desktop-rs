@@ -168,6 +168,27 @@
     </main>
   </div>
 
+  <!-- Repository Switcher Dropdown Modal -->
+  <div class="modal-backdrop" id="repo-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Switch Repository</h3>
+        <button class="modal-close" id="repo-modal-close">&times;</button>
+      </div>
+      <div class="modal-search">
+        <input type="text" id="repo-search-input" placeholder="Search repositories..." autocomplete="off">
+      </div>
+      <div class="modal-branch-list" id="modal-repo-list">
+        <!-- Repositories populated here -->
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 8px; justify-content: space-between;">
+        <button class="btn-subtle" id="repo-modal-add-btn">Add Existing…</button>
+        <button class="btn-subtle" id="repo-modal-new-btn">New Repo…</button>
+        <button class="btn-primary" id="repo-modal-clone-btn">Clone…</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Branch Switcher Dropdown Modal -->
   <div class="modal-backdrop" id="branch-modal">
     <div class="modal-card">

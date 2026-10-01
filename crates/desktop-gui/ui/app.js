@@ -1,5 +1,14 @@
 // GitHub Desktop - Pure Rust + Tauri Frontend Engine
-const invoke = window.__TAURI__ ? window.__TAURI__.core.invoke : async (cmd, args) => {
+const invoke = async (cmd, args = {}) => {
+  if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+    return window.__TAURI__.core.invoke(cmd, args);
+  }
+  if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
+    return window.__TAURI__.invoke(cmd, args);
+  }
+  if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    return window.__TAURI_INTERNALS__.invoke(cmd, args);
+  }
   console.warn(`Mock invocation for ${cmd}:`, args);
   return null;
 };
@@ -18,12 +27,14 @@ const state = {
   },
   commits: [],
   branches: [],
+  repositories: [],
   pullRequests: [],
   isSyncing: false,
 };
 
 // DOM References
 const el = {
+  repoBtn: document.getElementById('repo-btn'),
   repoName: document.getElementById('repo-name'),
   branchName: document.getElementById('branch-name'),
   aheadBehind: document.getElementById('ahead-behind'),
@@ -34,6 +45,14 @@ const el = {
   branchBtn: document.getElementById('branch-btn'),
   prsBtn: document.getElementById('prs-btn'),
   terminalBtn: document.getElementById('terminal-btn'),
+
+  repoModal: document.getElementById('repo-modal'),
+  repoModalClose: document.getElementById('repo-modal-close'),
+  repoSearchInput: document.getElementById('repo-search-input'),
+  modalRepoList: document.getElementById('modal-repo-list'),
+  repoModalAddBtn: document.getElementById('repo-modal-add-btn'),
+  repoModalNewBtn: document.getElementById('repo-modal-new-btn'),
+  repoModalCloneBtn: document.getElementById('repo-modal-clone-btn'),
 
   tabChanges: document.getElementById('tab-changes'),
   tabHistory: document.getElementById('tab-history'),
@@ -102,10 +121,26 @@ const el = {
 
 // Initialization
 async function init() {
-  setupEventListeners();
-  await refreshRepoInfo();
-  await refreshStatus();
-  await loadCommits();
+  try {
+    setupEventListeners();
+  } catch (err) {
+    console.error('Failed to set up event listeners:', err);
+  }
+  try {
+    await refreshRepoInfo();
+  } catch (err) {
+    console.error('Failed to refresh repo info:', err);
+  }
+  try {
+    await refreshStatus();
+  } catch (err) {
+    console.error('Failed to refresh status:', err);
+  }
+  try {
+    await loadCommits();
+  } catch (err) {
+    console.error('Failed to load commits:', err);
+  }
 }
 
 function showToast(message, isError = false) {
@@ -418,6 +453,53 @@ function renderBranchList(branches, filter = '') {
   });
 }
 
+function renderRepoList(repos, filter = '') {
+  el.modalRepoList.innerHTML = '';
+  const term = (filter || '').toLowerCase().trim();
+  const filtered = (repos || []).filter(r => r.name.toLowerCase().includes(term) || r.path.toLowerCase().includes(term));
+
+  if (filtered.length === 0) {
+    el.modalRepoList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">No matching repositories</div>';
+    return;
+  }
+
+  filtered.forEach(repo => {
+    const row = document.createElement('div');
+    row.className = `modal-branch-row ${repo.is_current ? 'current' : ''}`;
+    row.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+        <svg class="octicon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+          <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25H12v1.5H5.25a.25.25 0 0 1-.25-.25Z"/>
+        </svg>
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <div style="font-weight: 600;">${escapeHtml(repo.name)} ${repo.is_current ? '<span style="color: var(--accent); font-size: 11px; font-weight: normal;">(current)</span>' : ''}</div>
+          <div style="font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis;">${escapeHtml(repo.path)}</div>
+        </div>
+      </div>
+      ${repo.is_current ? '<span style="color: var(--btn-commit-bg); font-weight: 700;">✓</span>' : '<button class="btn-subtle" style="font-size: 11px; padding: 2px 8px;">Switch</button>'}
+    `;
+
+    row.addEventListener('click', async () => {
+      if (repo.is_current) {
+        el.repoModal.classList.remove('open');
+        return;
+      }
+      try {
+        await invoke('switch_repository', { newPath: repo.path });
+        showToast(`Switched to repository ${repo.name}`);
+        el.repoModal.classList.remove('open');
+        await refreshRepoInfo();
+        await refreshStatus();
+        await loadCommits();
+      } catch (err) {
+        showToast(`Switch failed: ${err}`, true);
+      }
+    });
+
+    el.modalRepoList.appendChild(row);
+  });
+}
+
 // Event Listeners
 function setupEventListeners() {
   // Tabs
@@ -599,12 +681,32 @@ function setupEventListeners() {
   });
 
   // Repository Switcher Button on Header
-  el.repoBtn.addEventListener('click', () => {
-    el.addRepoModal.classList.add('open');
-    if (state.status && state.status.path) {
-      el.addRepoPathInput.value = state.status.path;
+  el.repoBtn.addEventListener('click', async () => {
+    try {
+      const repos = await invoke('get_repositories');
+      state.repositories = repos || [];
+      renderRepoList(state.repositories);
+    } catch (err) {
+      console.warn('Failed to load repositories:', err);
     }
-    el.addRepoPathInput.focus();
+    el.repoSearchInput.value = '';
+    el.repoModal.classList.add('open');
+    el.repoSearchInput.focus();
+  });
+
+  el.repoModalClose.addEventListener('click', () => el.repoModal.classList.remove('open'));
+  el.repoSearchInput.addEventListener('input', (e) => renderRepoList(state.repositories, e.target.value));
+  el.repoModalAddBtn.addEventListener('click', () => {
+    el.repoModal.classList.remove('open');
+    el.addRepoModal.classList.add('open');
+  });
+  el.repoModalNewBtn.addEventListener('click', () => {
+    el.repoModal.classList.remove('open');
+    el.newRepoModal.classList.add('open');
+  });
+  el.repoModalCloneBtn.addEventListener('click', () => {
+    el.repoModal.classList.remove('open');
+    el.cloneRepoModal.classList.add('open');
   });
 
   // New Repository Modal
@@ -676,6 +778,7 @@ function setupEventListeners() {
   el.aboutModalCloseBtn.addEventListener('click', () => el.aboutModal.classList.remove('open'));
 
   const allModals = [
+    el.repoModal,
     el.branchModal,
     el.prModal,
     el.newRepoModal,
@@ -708,8 +811,10 @@ function setupEventListeners() {
 }
 
 function setupMenuEventListeners() {
-  if (window.__TAURI__ && window.__TAURI__.event) {
-    window.__TAURI__.event.listen('menu-event', (event) => {
+  const listenFn = (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen)
+    || (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.listen);
+  if (typeof listenFn === 'function') {
+    listenFn('menu-event', (event) => {
       handleMenuCommand(event.payload);
     });
   }

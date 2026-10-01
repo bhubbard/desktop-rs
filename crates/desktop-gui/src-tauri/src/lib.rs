@@ -268,6 +268,55 @@ fn switch_repository(new_path: String, state: State<'_, AppState>) -> Result<Rep
     })
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RepoItem {
+    pub name: String,
+    pub path: String,
+    pub is_current: bool,
+}
+
+#[tauri::command]
+fn get_repositories(state: State<'_, AppState>) -> Result<Vec<RepoItem>, String> {
+    let current_path = state.current_repo.lock().map_err(|e| e.to_string())?.clone();
+    let mut repos = Vec::new();
+
+    if let Ok(git) = GitClient::open_or_find(&current_path) {
+        repos.push(RepoItem {
+            name: git.repo_name(),
+            path: git.repo_path().display().to_string(),
+            is_current: true,
+        });
+    }
+
+    if let Some(parent) = current_path.parent() {
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p != current_path && p.is_dir() && p.join(".git").exists() {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("repo").to_string();
+                    repos.push(RepoItem {
+                        name,
+                        path: p.display().to_string(),
+                        is_current: false,
+                    });
+                }
+            }
+        }
+    }
+
+    repos.sort_by(|a, b| {
+        if a.is_current {
+            std::cmp::Ordering::Less
+        } else if b.is_current {
+            std::cmp::Ordering::Greater
+        } else {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        }
+    });
+
+    Ok(repos)
+}
+
 #[tauri::command]
 fn start_dragging(window: tauri::Window) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
@@ -555,8 +604,21 @@ fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
     )
 }
 
+fn find_initial_repo_path() -> PathBuf {
+    if let Ok(dir) = std::env::current_dir() {
+        if GitClient::open_or_find(&dir).is_ok() {
+            return dir;
+        }
+    }
+    let default_project = PathBuf::from("/Users/bhubbard/PROJECTS/desktop-rs");
+    if default_project.exists() && GitClient::open_or_find(&default_project).is_ok() {
+        return default_project;
+    }
+    PathBuf::from(".")
+}
+
 pub fn run() {
-    let initial_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let initial_path = find_initial_repo_path();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -590,6 +652,7 @@ pub fn run() {
             reveal_in_finder,
             open_in_terminal,
             switch_repository,
+            get_repositories,
             start_dragging,
             init_repository,
             clone_repository
