@@ -22,7 +22,11 @@ echo "3. Running GitHub Desktop Official Fixtures Compat Tests..."
 cargo test -p desktop-git --test github_desktop_fixtures_compat -- --nocapture
 
 echo ""
-echo "4. Running End-to-End CLI Porcelain Tests against GitHub Desktop Fixtures..."
+echo "4. Running GUI Draggable Window & Overlay Unit Tests..."
+cargo test -p desktop-gui --test window_drag_tests -- --nocapture
+
+echo ""
+echo "5. Running End-to-End CLI Porcelain Tests against GitHub Desktop Fixtures..."
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
