@@ -239,3 +239,9 @@ pub struct GitHubUser {
     pub email: Option<String>,
     pub avatar_url: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Remote {
+    pub name: String,
+    pub url: String,
+}

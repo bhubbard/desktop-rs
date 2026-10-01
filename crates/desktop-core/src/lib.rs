@@ -8,5 +8,5 @@ pub use diff::{parse_diff, Diff, DiffHunk, DiffLine, DiffLineType};
 pub use error::{CoreError, Result};
 pub use models::{
     Author, Branch, Commit, FileChange, FileStatusType, GitHubUser, Issue, PullRequest,
-    RepositoryStatus, StashEntry,
+    Remote, RepositoryStatus, StashEntry,
 };

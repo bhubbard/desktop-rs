@@ -420,6 +420,24 @@ impl GitClient {
         self.run_git(&args)
     }
 
+    pub fn remotes(&self) -> Result<Vec<desktop_core::models::Remote>> {
+        let output = self.run_git(&["remote", "-v"])?;
+        let mut map = std::collections::BTreeMap::new();
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let name = parts[0].to_string();
+                let url = parts[1].to_string();
+                map.entry(name).or_insert(url);
+            }
+        }
+        let remotes = map
+            .into_iter()
+            .map(|(name, url)| desktop_core::models::Remote { name, url })
+            .collect();
+        Ok(remotes)
+    }
+
     pub fn stash_save(&self, message: Option<&str>, keep_index: bool) -> Result<()> {
         let mut args = vec!["stash", "push"];
         if keep_index {
