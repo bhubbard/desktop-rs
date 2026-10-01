@@ -321,6 +321,13 @@ impl GitClient {
         Ok(())
     }
 
+    /// Reverts a specific commit by creating a new revert commit
+    pub fn revert_commit(&self, sha: &str) -> Result<String> {
+        self.run_git(&["revert", "--no-edit", sha])?;
+        let new_sha = self.run_git(&["rev-parse", "HEAD"])?;
+        Ok(new_sha.trim().to_string())
+    }
+
     /// Lists branches
     pub fn branches(&self) -> Result<Vec<Branch>> {
         let format = "%(HEAD)|%(refname:short)|%(upstream:short)|%(objectname:short)";
@@ -634,5 +641,23 @@ mod tests {
         assert_eq!(log[0].co_authors.len(), 1);
         assert_eq!(log[0].co_authors[0].name, "Partner");
         assert_eq!(log[0].co_authors[0].email, "partner@example.com");
+    }
+
+    #[test]
+    fn test_revert_commit() {
+        let (dir, client) = setup_test_repo();
+        let file_path = dir.path().join("feature.txt");
+        std::fs::write(&file_path, "feature line\n").unwrap();
+        client.stage_file("feature.txt").unwrap();
+        let sha = client.commit("Add feature", None, &[]).unwrap();
+
+        let revert_sha = client.revert_commit(&sha).unwrap();
+        assert!(!revert_sha.is_empty());
+        assert_ne!(revert_sha, sha);
+
+        let log = client.log(2).unwrap();
+        assert_eq!(log.len(), 2);
+        assert!(log[0].summary.contains("Revert"));
+        assert!(!file_path.exists());
     }
 }

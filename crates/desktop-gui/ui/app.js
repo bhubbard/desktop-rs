@@ -72,6 +72,16 @@ const el = {
   historyFilter: document.getElementById('history-filter'),
   commitList: document.getElementById('commit-list'),
 
+  commitHeader: document.getElementById('commit-header'),
+  commitHeaderTitle: document.getElementById('commit-header-title'),
+  commitHeaderAuthor: document.getElementById('commit-header-author'),
+  commitHeaderDate: document.getElementById('commit-header-date'),
+  commitHeaderSha: document.getElementById('commit-header-sha'),
+  commitHeaderDesc: document.getElementById('commit-header-desc'),
+  copyShaBtn: document.getElementById('copy-sha-btn'),
+  historyUndoBtn: document.getElementById('history-undo-btn'),
+  historyRevertBtn: document.getElementById('history-revert-btn'),
+
   diffHeader: document.getElementById('diff-header'),
   diffFilename: document.getElementById('diff-filename'),
   statAdd: document.getElementById('stat-add'),
@@ -213,7 +223,16 @@ async function loadCommits() {
   try {
     const commits = await invoke('get_commits', { limit: 50 });
     state.commits = commits || [];
-    renderCommitList(state.commits);
+    const filter = el.historyFilter ? el.historyFilter.value.trim() : '';
+    renderCommitList(state.commits, filter);
+    if (state.commits.length > 0) {
+      const selected = state.commits.find(c => c.sha === state.selectedCommit);
+      if (selected) {
+        selectCommit(selected, selected.sha === state.commits[0].sha);
+      } else if (state.activeTab === 'history') {
+        selectCommit(state.commits[0], true);
+      }
+    }
   } catch (err) {
     console.error('Failed to load commits:', err);
   }
@@ -394,34 +413,120 @@ function renderEmptyState() {
   document.getElementById('empty-reveal-finder')?.addEventListener('click', () => invoke('reveal_in_finder'));
 }
 
-function renderCommitList(commits) {
+function renderCommitList(commits, filter = '') {
   el.commitList.innerHTML = '';
-  commits.forEach(commit => {
+  const filtered = filter
+    ? commits.filter(c =>
+        (c.summary && c.summary.toLowerCase().includes(filter.toLowerCase())) ||
+        (c.author && c.author.name && c.author.name.toLowerCase().includes(filter.toLowerCase())) ||
+        (c.sha && c.sha.toLowerCase().startsWith(filter.toLowerCase())) ||
+        (c.short_sha && c.short_sha.toLowerCase().startsWith(filter.toLowerCase()))
+      )
+    : commits;
+
+  if (filtered.length === 0) {
+    el.commitList.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">No commits found</div>';
+    return;
+  }
+
+  filtered.forEach(commit => {
+    const isHead = (commit.sha === state.commits[0]?.sha);
     const div = document.createElement('div');
     div.className = `commit-item ${state.selectedCommit === commit.sha ? 'selected' : ''}`;
 
     div.innerHTML = `
-      <div class="commit-summary-line">${escapeHtml(commit.summary)}</div>
+      <div class="commit-item-top">
+        <div class="commit-summary-line">${escapeHtml(commit.summary)}</div>
+        <button class="commit-revert-quick-btn" title="Revert this commit">Revert</button>
+      </div>
       <div class="commit-meta-line">
-        <span>${escapeHtml(commit.author.name)}</span>
+        <span>${escapeHtml(commit.author?.name || '')}</span>
         <span>•</span>
-        <span>${escapeHtml(commit.date)}</span>
+        <span>${escapeHtml(commit.date || '')}</span>
         <span class="commit-sha-pill">${commit.short_sha}</span>
       </div>
     `;
 
-    div.addEventListener('click', async () => {
-      state.selectedCommit = commit.sha;
-      const items = el.commitList.querySelectorAll('.commit-item');
-      items.forEach(it => it.classList.remove('selected'));
-      div.classList.add('selected');
+    const revertBtn = div.querySelector('.commit-revert-quick-btn');
+    if (revertBtn) {
+      revertBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        confirmAndRevertCommit(commit);
+      });
+    }
 
-      const diffs = await invoke('get_commit_diff', { sha: commit.sha });
-      renderDiff(diffs, `Commit: ${commit.short_sha} - ${commit.summary}`);
+    div.addEventListener('click', () => {
+      selectCommit(commit, isHead);
     });
 
     el.commitList.appendChild(div);
   });
+}
+
+async function selectCommit(commit, isHead = false) {
+  state.selectedCommit = commit.sha;
+  const items = el.commitList.querySelectorAll('.commit-item');
+  items.forEach(it => {
+    const pill = it.querySelector('.commit-sha-pill');
+    it.classList.toggle('selected', pill && pill.textContent === commit.short_sha);
+  });
+
+  // Populate commit header
+  if (el.commitHeaderTitle) el.commitHeaderTitle.textContent = commit.summary;
+  if (el.commitHeaderAuthor) el.commitHeaderAuthor.textContent = `${commit.author?.name || ''} <${commit.author?.email || ''}>`;
+  if (el.commitHeaderDate) el.commitHeaderDate.textContent = commit.date || '';
+  if (el.commitHeaderSha) {
+    el.commitHeaderSha.textContent = commit.short_sha;
+    el.commitHeaderSha.title = `Full SHA: ${commit.sha} (Click to copy)`;
+  }
+
+  if (el.commitHeaderDesc) {
+    if (commit.body && commit.body.trim()) {
+      el.commitHeaderDesc.textContent = commit.body.trim();
+      el.commitHeaderDesc.style.display = 'block';
+    } else {
+      el.commitHeaderDesc.textContent = '';
+      el.commitHeaderDesc.style.display = 'none';
+    }
+  }
+
+  // Header display logic
+  if (state.activeTab === 'history') {
+    if (el.commitHeader) el.commitHeader.style.display = 'flex';
+    if (el.diffHeader) el.diffHeader.style.display = 'none';
+  }
+
+  // Show Undo button only on HEAD commit
+  if (el.historyUndoBtn) {
+    el.historyUndoBtn.style.display = isHead ? 'inline-flex' : 'none';
+  }
+
+  try {
+    const diffs = await invoke('get_commit_diff', { sha: commit.sha });
+    renderDiff(diffs, `Commit: ${commit.short_sha} - ${commit.summary}`);
+  } catch (err) {
+    console.error('Failed to load commit diff:', err);
+    el.diffContent.innerHTML = `<div class="empty-state"><p>Error loading commit diff: ${err}</p></div>`;
+  }
+}
+
+async function confirmAndRevertCommit(commit) {
+  const shortSha = commit.short_sha || commit.sha.substring(0, 7);
+  const msg = `Are you sure you want to revert commit ${shortSha} ("${commit.summary}")?\n\nThis will create a new commit that inverts the changes.`;
+  if (!confirm(msg)) return;
+
+  try {
+    showToast(`Reverting ${shortSha}…`);
+    const newSha = await invoke('revert_commit', { sha: commit.sha });
+    showToast(`Reverted ${shortSha} (new commit: ${newSha.substring(0, 7)})`);
+    await Promise.all([
+      refreshRepoInfo(),
+      refreshStatus(),
+      loadCommits()
+    ]);
+  } catch (err) {
+    showToast(`Revert failed: ${err}`, true);
+  }
 }
 
 function renderBranchList(branches, filter = '') {
@@ -509,6 +614,8 @@ function setupEventListeners() {
     el.tabHistory.classList.remove('active');
     el.viewChanges.classList.add('active');
     el.viewHistory.classList.remove('active');
+    if (el.commitHeader) el.commitHeader.style.display = 'none';
+    if (el.diffHeader) el.diffHeader.style.display = 'flex';
     if (state.selectedFile) {
       loadDiff(state.selectedFile);
     } else {
@@ -522,7 +629,62 @@ function setupEventListeners() {
     el.tabChanges.classList.remove('active');
     el.viewHistory.classList.add('active');
     el.viewChanges.classList.remove('active');
+    if (el.diffHeader) el.diffHeader.style.display = 'none';
+    if (state.selectedCommit) {
+      const commit = state.commits.find(c => c.sha === state.selectedCommit);
+      if (commit) {
+        selectCommit(commit, commit.sha === state.commits[0]?.sha);
+      }
+    } else if (state.commits.length > 0) {
+      selectCommit(state.commits[0], true);
+    }
   });
+
+  // History Filter
+  if (el.historyFilter) {
+    el.historyFilter.addEventListener('input', (e) => {
+      renderCommitList(state.commits, e.target.value.trim());
+    });
+  }
+
+  // History Header Actions
+  const copySelectedSha = () => {
+    if (!state.selectedCommit) return;
+    navigator.clipboard.writeText(state.selectedCommit);
+    showToast('Copied full SHA to clipboard');
+  };
+  if (el.copyShaBtn) el.copyShaBtn.addEventListener('click', copySelectedSha);
+  if (el.commitHeaderSha) el.commitHeaderSha.addEventListener('click', copySelectedSha);
+
+  if (el.historyUndoBtn) {
+    el.historyUndoBtn.addEventListener('click', async () => {
+      try {
+        await invoke('undo_commit');
+        showToast('Undid latest commit (soft reset)');
+        await Promise.all([
+          refreshRepoInfo(),
+          refreshStatus(),
+          loadCommits()
+        ]);
+        el.tabChanges.click();
+      } catch (err) {
+        showToast(`Undo error: ${err}`, true);
+      }
+    });
+  }
+
+  if (el.historyRevertBtn) {
+    el.historyRevertBtn.addEventListener('click', () => {
+      if (!state.selectedCommit) {
+        showToast('Select a commit in History to revert', true);
+        return;
+      }
+      const commit = state.commits.find(c => c.sha === state.selectedCommit);
+      if (commit) {
+        confirmAndRevertCommit(commit);
+      }
+    });
+  }
 
   // Select All Checkbox
   el.selectAllCheckbox.addEventListener('change', async (e) => {
@@ -545,27 +707,45 @@ function setupEventListeners() {
       return;
     }
 
+    const origBtnHtml = el.commitBtn.innerHTML;
+    el.commitBtn.disabled = true;
+    el.commitBtn.innerHTML = `
+      <span class="commit-btn-spinner" style="display:inline-block; width:12px; height:12px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:6px; vertical-align:middle;"></span>
+      <span>Committing…</span>
+    `;
+
     try {
       const sha = await invoke('commit', { summary, description, coAuthors: [] });
       showToast(`Committed ${sha.substring(0, 7)}`);
       el.commitSummary.value = '';
       el.commitDescription.value = '';
-      await refreshRepoInfo();
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([
+        refreshStatus(),
+        refreshRepoInfo(),
+        loadCommits()
+      ]);
     } catch (err) {
       showToast(`Commit error: ${err}`, true);
+    } finally {
+      el.commitBtn.disabled = false;
+      el.commitBtn.innerHTML = origBtnHtml;
+      const branchLabel = el.commitBtn.querySelector('#commit-branch-label');
+      if (branchLabel && el.branchName) {
+        branchLabel.textContent = el.branchName.textContent;
+      }
     }
   });
 
-  // Undo Commit
+  // Undo Commit (from Changes tab)
   el.undoBtn.addEventListener('click', async () => {
     try {
       await invoke('undo_commit');
       showToast('Undid latest commit (soft reset)');
-      await refreshRepoInfo();
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([
+        refreshRepoInfo(),
+        refreshStatus(),
+        loadCommits()
+      ]);
     } catch (err) {
       showToast(`Undo error: ${err}`, true);
     }
@@ -893,6 +1073,16 @@ async function handleMenuCommand(id) {
       } catch (e) {
         showToast(`Stash error: ${e}`, true);
       }
+      break;
+    case 'revert-commit':
+      if (state.activeTab !== 'history') {
+        el.tabHistory.click();
+      }
+      setTimeout(() => {
+        if (el.historyRevertBtn) {
+          el.historyRevertBtn.click();
+        }
+      }, 50);
       break;
     case 'compare-on-github':
     case 'create-pull-request':

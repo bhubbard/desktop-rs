@@ -123,6 +123,12 @@ fn undo_commit(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn revert_commit(sha: String, state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    git.revert_commit(&sha).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_branches(state: State<'_, AppState>) -> Result<Vec<Branch>, String> {
     let git = get_git(&state)?;
     git.branches().map_err(|e| e.to_string())
@@ -522,6 +528,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
     let open_terminal = MenuItem::with_id(app, "open-in-shell", "Open in Terminal", true, Some("Control+`"))?;
     let show_finder = MenuItem::with_id(app, "open-working-directory", "Show in Finder", true, Some("CmdOrControl+Shift+F"))?;
     let open_editor = MenuItem::with_id(app, "open-external-editor", "Open in External Editor", true, Some("CmdOrControl+Shift+A"))?;
+    let revert_commit_item = MenuItem::with_id(app, "revert-commit", "Revert Selected Commit…", true, Some("CmdOrControl+Shift+R"))?;
 
     let repo_menu = Submenu::with_items(
         app,
@@ -531,6 +538,8 @@ fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
             &push,
             &pull,
             &fetch,
+            &sep()?,
+            &revert_commit_item,
             &sep()?,
             &view_on_github,
             &open_terminal,
@@ -640,6 +649,7 @@ pub fn run() {
             discard_file,
             commit,
             undo_commit,
+            revert_commit,
             get_branches,
             checkout_branch,
             create_branch,

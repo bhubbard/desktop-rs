@@ -135,7 +135,35 @@
 
     <!-- Right Main Diff / Detail View -->
     <main class="diff-container">
-      <!-- Diff Top Bar -->
+      <!-- Commit Detail Top Bar (History Mode) -->
+      <div class="commit-header" id="commit-header" style="display: none;">
+        <div class="commit-header-main">
+          <div class="commit-header-title" id="commit-header-title"></div>
+          <div class="commit-header-meta">
+            <span id="commit-header-author"></span>
+            <span>•</span>
+            <span id="commit-header-date"></span>
+            <span class="commit-sha-pill" id="commit-header-sha" title="Click to copy SHA" style="cursor: pointer;"></span>
+          </div>
+          <div class="commit-header-desc" id="commit-header-desc" style="display: none;"></div>
+        </div>
+        <div class="commit-header-actions">
+          <button class="btn-subtle" id="copy-sha-btn" title="Copy commit SHA">
+            <span>Copy SHA</span>
+          </button>
+          <button class="btn-subtle" id="history-undo-btn" title="Undo latest commit (soft reset)" style="display: none;">
+            <span>Undo Commit</span>
+          </button>
+          <button class="btn-subtle danger" id="history-revert-btn" title="Revert the changes introduced in this commit">
+            <svg class="octicon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7 7 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7 7 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>
+            </svg>
+            <span>Revert Changes in Commit</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Diff Top Bar (Changes Mode) -->
       <div class="diff-header" id="diff-header">
         <div class="diff-file-info">
           <span class="diff-filename" id="diff-filename">No file selected</span>
