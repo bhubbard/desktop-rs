@@ -1056,3 +1056,107 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Commit Files Sub-bar (History Mode) */
+.commit-files-bar {
+  background-color: var(--bg-hover);
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.commit-files-summary {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.commit-files-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.commit-file-tab {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.commit-file-tab:hover {
+  border-color: var(--accent);
+}
+
+.commit-file-tab.selected {
+  background-color: var(--bg-selected);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Diff Hunk Actions (Interactive Hunk Staging) */
+.diff-hunk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.diff-hunk-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.btn-hunk-action {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-main);
+  padding: 2px 7px;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-hunk-action:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.btn-hunk-action.danger:hover {
+  background-color: var(--diff-del-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Remove Repository Button */
+.btn-repo-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.btn-repo-remove:hover {
+  background-color: var(--diff-del-bg);
+  color: var(--danger);
+}

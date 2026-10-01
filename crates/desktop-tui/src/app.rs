@@ -126,7 +126,7 @@ impl App {
             }
             ActiveTab::History => {
                 if let Some(commit) = self.commits.get(self.selected_commit_index) {
-                    self.current_diffs = self.git.diff_commit(&commit.sha).unwrap_or_default();
+                    self.current_diffs = self.git.diff_commit(&commit.sha, None).unwrap_or_default();
                 } else {
                     self.current_diffs.clear();
                 }

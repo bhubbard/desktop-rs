@@ -2,7 +2,7 @@ use crate::error::{GitError, Result};
 use desktop_core::{
     commit::{extract_co_authors, format_commit_message},
     diff::parse_diff,
-    models::{Author, Branch, Commit, FileChange, FileStatusType, RepositoryStatus, StashEntry},
+    models::{Author, Branch, Commit, CommitFileChange, FileChange, FileStatusType, RepositoryStatus, StashEntry},
     Diff, DiffHunk,
 };
 use std::io::Write;
@@ -233,10 +233,50 @@ impl GitClient {
         Ok(parse_diff(&raw))
     }
 
-    /// Generates diff for a specific commit
-    pub fn diff_commit(&self, sha: &str) -> Result<Vec<Diff>> {
-        let raw = self.run_git(&["show", "--no-color", "--format=", "--patch", sha])?;
+    /// Generates diff for a specific commit (optionally limited to a single file)
+    pub fn diff_commit(&self, sha: &str, file_path: Option<&str>) -> Result<Vec<Diff>> {
+        let mut args = vec!["show", "--no-color", "--format=", "--patch", sha];
+        if let Some(p) = file_path {
+            args.push("--");
+            args.push(p);
+        }
+        let raw = self.run_git(&args)?;
         Ok(parse_diff(&raw))
+    }
+
+    /// Returns list of files changed in a commit with additions, deletions, and status code
+    pub fn commit_files(&self, sha: &str) -> Result<Vec<CommitFileChange>> {
+        let numstat_out = self.run_git(&["show", "--numstat", "--format=", sha])?;
+        let name_status_out = self.run_git(&["diff-tree", "--no-commit-id", "--name-status", "-r", sha])?;
+
+        let mut status_map = std::collections::HashMap::new();
+        for line in name_status_out.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let code = parts[0].chars().next().unwrap_or('M').to_string();
+                let path = parts[1].to_string();
+                status_map.insert(path, code);
+            }
+        }
+
+        let mut files = Vec::new();
+        for line in numstat_out.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let additions = parts[0].parse().unwrap_or(0);
+                let deletions = parts[1].parse().unwrap_or(0);
+                let path = parts[2].to_string();
+                let status = status_map.get(&path).cloned().unwrap_or_else(|| "M".to_string());
+                files.push(CommitFileChange {
+                    path,
+                    status,
+                    additions,
+                    deletions,
+                });
+            }
+        }
+
+        Ok(files)
     }
 
     pub fn stage_file(&self, path: &str) -> Result<()> {
@@ -299,6 +339,39 @@ impl GitClient {
     pub fn discard_hunk(&self, hunk: &DiffHunk, file_path: &str) -> Result<()> {
         let patch = hunk.to_patch(file_path);
         self.run_git_with_stdin(&["apply", "--reverse", "--unidiff-zero", "-"], &patch)?;
+        Ok(())
+    }
+
+    /// Applies a raw unidiff patch string directly to index or working tree
+    pub fn apply_patch(&self, patch: &str, cached: bool, reverse: bool) -> Result<()> {
+        let mut args = vec!["apply", "--unidiff-zero"];
+        if cached {
+            args.push("--cached");
+        }
+        if reverse {
+            args.push("--reverse");
+        }
+        args.push("-");
+        self.run_git_with_stdin(&args, patch)?;
+        Ok(())
+    }
+
+    /// Appends a file pattern to .gitignore
+    pub fn ignore_file(&self, pattern: &str) -> Result<()> {
+        let gitignore_path = self.repo_path.join(".gitignore");
+        let mut content = if gitignore_path.exists() {
+            std::fs::read_to_string(&gitignore_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(pattern.trim());
+        content.push('\n');
+
+        std::fs::write(&gitignore_path, content)?;
         Ok(())
     }
 

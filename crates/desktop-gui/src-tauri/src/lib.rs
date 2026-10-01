@@ -1,4 +1,4 @@
-use desktop_core::models::{Author, Branch, Commit, PullRequest, RepositoryStatus, StashEntry};
+use desktop_core::models::{Author, Branch, Commit, CommitFileChange, PullRequest, RepositoryStatus, StashEntry};
 use desktop_core::Diff;
 use desktop_git::GitClient;
 use desktop_github::GitHubClient;
@@ -221,9 +221,38 @@ fn get_commits(limit: Option<usize>, state: State<'_, AppState>) -> Result<Vec<C
 }
 
 #[tauri::command]
-fn get_commit_diff(sha: String, state: State<'_, AppState>) -> Result<Vec<Diff>, String> {
+fn get_commit_files(sha: String, state: State<'_, AppState>) -> Result<Vec<CommitFileChange>, String> {
     let git = get_git(&state)?;
-    git.diff_commit(&sha).map_err(|e| e.to_string())
+    git.commit_files(&sha).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_commit_diff(
+    sha: String,
+    file_path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Diff>, String> {
+    let git = get_git(&state)?;
+    git.diff_commit(&sha, file_path.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn apply_patch(
+    patch: String,
+    cached: bool,
+    reverse: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.apply_patch(&patch, cached, reverse)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ignore_file(pattern: String, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.ignore_file(&pattern).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -298,14 +327,50 @@ fn open_in_terminal(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+fn get_config_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("desktop-rs")
+    } else {
+        PathBuf::from(".desktop-rs")
+    }
+}
+
+fn get_saved_repo_paths() -> Vec<PathBuf> {
+    let file = get_config_dir().join("repositories.json");
+    if let Ok(data) = std::fs::read_to_string(&file) {
+        if let Ok(paths) = serde_json::from_str::<Vec<PathBuf>>(&data) {
+            return paths.into_iter().filter(|p| p.join(".git").exists()).collect();
+        }
+    }
+    Vec::new()
+}
+
+fn save_repo_paths(paths: &[PathBuf]) {
+    let dir = get_config_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let file = dir.join("repositories.json");
+    let _ = std::fs::write(file, serde_json::to_string_pretty(paths).unwrap_or_default());
+}
+
+fn add_saved_repo(path: &PathBuf) {
+    let mut paths = get_saved_repo_paths();
+    if !paths.contains(path) && path.join(".git").exists() {
+        paths.push(path.clone());
+        save_repo_paths(&paths);
+    }
+}
+
 #[tauri::command]
 fn switch_repository(new_path: String, state: State<'_, AppState>) -> Result<RepoSummary, String> {
     let path_buf = PathBuf::from(&new_path);
     let git = GitClient::open_or_find(&path_buf).map_err(|e| e.to_string())?;
     let status = git.status().map_err(|e| e.to_string())?;
 
+    let target_path = git.repo_path().to_path_buf();
+    add_saved_repo(&target_path);
+
     if let Ok(mut curr) = state.current_repo.lock() {
-        *curr = git.repo_path().to_path_buf();
+        *curr = target_path;
     }
 
     let is_clean = status.is_clean();
@@ -332,30 +397,32 @@ pub struct RepoItem {
 #[tauri::command]
 fn get_repositories(state: State<'_, AppState>) -> Result<Vec<RepoItem>, String> {
     let current_path = state.current_repo.lock().map_err(|e| e.to_string())?.clone();
-    let mut repos = Vec::new();
+    add_saved_repo(&current_path);
 
-    if let Ok(git) = GitClient::open_or_find(&current_path) {
-        repos.push(RepoItem {
-            name: git.repo_name(),
-            path: git.repo_path().display().to_string(),
-            is_current: true,
-        });
-    }
+    let mut saved = get_saved_repo_paths();
 
     if let Some(parent) = current_path.parent() {
         if let Ok(entries) = std::fs::read_dir(parent) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p != current_path && p.is_dir() && p.join(".git").exists() {
-                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("repo").to_string();
-                    repos.push(RepoItem {
-                        name,
-                        path: p.display().to_string(),
-                        is_current: false,
-                    });
+                if p.is_dir() && p.join(".git").exists() && !saved.contains(&p) {
+                    saved.push(p);
                 }
             }
         }
+    }
+
+    save_repo_paths(&saved);
+
+    let mut repos = Vec::new();
+    for p in saved {
+        let is_current = p == current_path;
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("repo").to_string();
+        repos.push(RepoItem {
+            name,
+            path: p.display().to_string(),
+            is_current,
+        });
     }
 
     repos.sort_by(|a, b| {
@@ -369,6 +436,15 @@ fn get_repositories(state: State<'_, AppState>) -> Result<Vec<RepoItem>, String>
     });
 
     Ok(repos)
+}
+
+#[tauri::command]
+fn remove_repository(path: String, state: State<'_, AppState>) -> Result<Vec<RepoItem>, String> {
+    let target = PathBuf::from(&path);
+    let mut saved = get_saved_repo_paths();
+    saved.retain(|p| p != &target);
+    save_repo_paths(&saved);
+    get_repositories(state)
 }
 
 #[tauri::command]
@@ -714,7 +790,10 @@ pub fn run() {
             get_stashes,
             sync_remote,
             get_commits,
+            get_commit_files,
             get_commit_diff,
+            apply_patch,
+            ignore_file,
             get_github_prs,
             checkout_pr,
             open_in_editor,
@@ -722,6 +801,7 @@ pub fn run() {
             open_in_terminal,
             switch_repository,
             get_repositories,
+            remove_repository,
             start_dragging,
             init_repository,
             clone_repository

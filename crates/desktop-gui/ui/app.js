@@ -31,6 +31,8 @@ const state = {
   pullRequests: [],
   stashes: [],
   selectedMergeBranch: null,
+  commitFiles: [],
+  selectedCommitFile: null,
   isSyncing: false,
 };
 
@@ -88,6 +90,10 @@ const el = {
   copyShaBtn: document.getElementById('copy-sha-btn'),
   historyUndoBtn: document.getElementById('history-undo-btn'),
   historyRevertBtn: document.getElementById('history-revert-btn'),
+
+  commitFilesBar: document.getElementById('commit-files-bar'),
+  commitFilesSummary: document.getElementById('commit-files-summary'),
+  commitFilesList: document.getElementById('commit-files-list'),
 
   diffHeader: document.getElementById('diff-header'),
   diffFilename: document.getElementById('diff-filename'),
@@ -378,6 +384,18 @@ function selectFile(filePath) {
   loadDiff(filePath);
 }
 
+function buildHunkPatch(filePath, hunk) {
+  let patch = `--- a/${filePath}\n+++ b/${filePath}\n`;
+  patch += hunk.header + '\n';
+  hunk.lines.forEach(line => {
+    let prefix = ' ';
+    if (line.line_type === 'Addition') prefix = '+';
+    else if (line.line_type === 'Deletion') prefix = '-';
+    patch += prefix + line.content + '\n';
+  });
+  return patch;
+}
+
 function renderDiff(diffs, filePath) {
   if (!diffs || diffs.length === 0) {
     renderEmptyState();
@@ -399,9 +417,21 @@ function renderDiff(diffs, filePath) {
     return;
   }
 
+  const isChangesMode = (state.activeTab === 'changes' && state.selectedFile);
+
   let html = '<div class="diff-table">';
-  diff.hunks.forEach(hunk => {
-    html += `<div class="diff-row hunk"><div class="diff-line-content">${escapeHtml(hunk.header)}</div></div>`;
+  diff.hunks.forEach((hunk, hunkIdx) => {
+    html += `
+      <div class="diff-row hunk diff-hunk-header">
+        <div class="diff-line-content">${escapeHtml(hunk.header)}</div>
+        ${isChangesMode ? `
+          <div class="diff-hunk-actions">
+            <button class="btn-hunk-action hunk-stage-btn" data-hunk-idx="${hunkIdx}">Stage Hunk</button>
+            <button class="btn-hunk-action danger hunk-discard-btn" data-hunk-idx="${hunkIdx}">Discard Hunk</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
 
     hunk.lines.forEach(line => {
       let rowClass = '';
@@ -431,6 +461,43 @@ function renderDiff(diffs, filePath) {
   html += '</div>';
 
   el.diffContent.innerHTML = html;
+
+  if (isChangesMode) {
+    el.diffContent.querySelectorAll('.hunk-stage-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-hunk-idx'), 10);
+        const hunk = diff.hunks[idx];
+        const patch = buildHunkPatch(state.selectedFile, hunk);
+        try {
+          await invoke('apply_patch', { patch, cached: true, reverse: false });
+          showToast('Staged hunk');
+          await Promise.all([refreshStatus(), refreshRepoInfo()]);
+          loadDiff(state.selectedFile);
+        } catch (err) {
+          showToast(`Stage hunk failed: ${err}`, true);
+        }
+      });
+    });
+
+    el.diffContent.querySelectorAll('.hunk-discard-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to discard this hunk?')) return;
+        const idx = parseInt(btn.getAttribute('data-hunk-idx'), 10);
+        const hunk = diff.hunks[idx];
+        const patch = buildHunkPatch(state.selectedFile, hunk);
+        try {
+          await invoke('apply_patch', { patch, cached: false, reverse: true });
+          showToast('Discarded hunk');
+          await refreshStatus();
+          loadDiff(state.selectedFile);
+        } catch (err) {
+          showToast(`Discard hunk failed: ${err}`, true);
+        }
+      });
+    });
+  }
 }
 
 function renderEmptyState() {
@@ -544,6 +611,7 @@ async function selectCommit(commit, isHead = false) {
   // Header display logic
   if (state.activeTab === 'history') {
     if (el.commitHeader) el.commitHeader.style.display = 'flex';
+    if (el.commitFilesBar) el.commitFilesBar.style.display = 'flex';
     if (el.diffHeader) el.diffHeader.style.display = 'none';
   }
 
@@ -552,9 +620,67 @@ async function selectCommit(commit, isHead = false) {
     el.historyUndoBtn.style.display = isHead ? 'inline-flex' : 'none';
   }
 
+  // Load changed files in this commit
+  state.selectedCommitFile = null;
   try {
-    const diffs = await invoke('get_commit_diff', { sha: commit.sha });
-    renderDiff(diffs, `Commit: ${commit.short_sha} - ${commit.summary}`);
+    const files = await invoke('get_commit_files', { sha: commit.sha });
+    state.commitFiles = files || [];
+    renderCommitFilesBar(commit);
+  } catch (err) {
+    console.error('Failed to load commit files:', err);
+  }
+
+  await loadCommitDiff(commit.sha, state.selectedCommitFile);
+}
+
+function renderCommitFilesBar(commit) {
+  if (!el.commitFilesBar || !el.commitFilesList) return;
+  el.commitFilesList.innerHTML = '';
+  const count = state.commitFiles.length;
+  el.commitFilesSummary.textContent = `${count} ${count === 1 ? 'file' : 'files'} changed`;
+
+  // "All Files" tab
+  const allTab = document.createElement('div');
+  allTab.className = `commit-file-tab ${state.selectedCommitFile === null ? 'selected' : ''}`;
+  allTab.innerHTML = `<span>All Files</span>`;
+  allTab.addEventListener('click', async () => {
+    state.selectedCommitFile = null;
+    el.commitFilesList.querySelectorAll('.commit-file-tab').forEach(t => t.classList.remove('selected'));
+    allTab.classList.add('selected');
+    await loadCommitDiff(commit.sha, null);
+  });
+  el.commitFilesList.appendChild(allTab);
+
+  state.commitFiles.forEach(file => {
+    const tab = document.createElement('div');
+    const isSelected = state.selectedCommitFile === file.path;
+    tab.className = `commit-file-tab ${isSelected ? 'selected' : ''}`;
+
+    let statusClass = `status-${file.status}`;
+    const baseName = file.path.split('/').pop() || file.path;
+
+    tab.innerHTML = `
+      <span class="status-badge ${statusClass}">${file.status}</span>
+      <span title="${escapeHtml(file.path)}">${escapeHtml(baseName)}</span>
+      <span style="color: var(--diff-add-text); font-size: 10.5px;">+${file.additions}</span>
+      <span style="color: var(--diff-del-text); font-size: 10.5px;">-${file.deletions}</span>
+    `;
+
+    tab.addEventListener('click', async () => {
+      state.selectedCommitFile = file.path;
+      el.commitFilesList.querySelectorAll('.commit-file-tab').forEach(t => t.classList.remove('selected'));
+      tab.classList.add('selected');
+      await loadCommitDiff(commit.sha, file.path);
+    });
+
+    el.commitFilesList.appendChild(tab);
+  });
+}
+
+async function loadCommitDiff(sha, filePath = null) {
+  try {
+    const diffs = await invoke('get_commit_diff', { sha, filePath });
+    renderDiff(diffs, filePath ? `Commit: ${sha.substring(0, 7)} — ${filePath}` : `Commit: ${sha.substring(0, 7)}`);
   } catch (err) {
     console.error('Failed to load commit diff:', err);
     el.diffContent.innerHTML = `<div class="empty-state"><p>Error loading commit diff: ${err}</p></div>`;
@@ -684,7 +810,7 @@ function renderRepoList(repos, filter = '') {
     const row = document.createElement('div');
     row.className = `modal-branch-row ${repo.is_current ? 'current' : ''}`;
     row.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
         <svg class="octicon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
           <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25H12v1.5H5.25a.25.25 0 0 1-.25-.25Z"/>
         </svg>
@@ -693,8 +819,26 @@ function renderRepoList(repos, filter = '') {
           <div style="font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis;">${escapeHtml(repo.path)}</div>
         </div>
       </div>
-      ${repo.is_current ? '<span style="color: var(--btn-commit-bg); font-weight: 700;">✓</span>' : '<button class="btn-subtle" style="font-size: 11px; padding: 2px 8px;">Switch</button>'}
+      <div style="display: flex; align-items: center; gap: 8px;">
+        ${repo.is_current ? '<span style="color: var(--btn-commit-bg); font-weight: 700;">✓</span>' : '<button class="btn-subtle" style="font-size: 11px; padding: 2px 8px;">Switch</button>'}
+        ${!repo.is_current ? '<button class="btn-repo-remove" title="Remove from list">✕</button>' : ''}
+      </div>
     `;
+
+    const removeBtn = row.querySelector('.btn-repo-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          await invoke('remove_repository', { path: repo.path });
+          showToast(`Removed ${repo.name} from list`);
+          state.repositories = (state.repositories || []).filter(r => r.path !== repo.path);
+          renderRepoList(state.repositories, el.repoSearchInput ? el.repoSearchInput.value : '');
+        } catch (err) {
+          showToast(`Failed to remove repository: ${err}`, true);
+        }
+      });
+    }
 
     row.addEventListener('click', async () => {
       if (repo.is_current) {
@@ -727,6 +871,7 @@ function setupEventListeners() {
     el.viewChanges.classList.add('active');
     el.viewHistory.classList.remove('active');
     if (el.commitHeader) el.commitHeader.style.display = 'none';
+    if (el.commitFilesBar) el.commitFilesBar.style.display = 'none';
     if (el.diffHeader) el.diffHeader.style.display = 'flex';
     if (state.selectedFile) {
       loadDiff(state.selectedFile);
@@ -742,6 +887,7 @@ function setupEventListeners() {
     el.viewHistory.classList.add('active');
     el.viewChanges.classList.remove('active');
     if (el.diffHeader) el.diffHeader.style.display = 'none';
+    if (el.commitFilesBar && state.selectedCommit) el.commitFilesBar.style.display = 'flex';
     if (state.selectedCommit) {
       const commit = state.commits.find(c => c.sha === state.selectedCommit);
       if (commit) {
