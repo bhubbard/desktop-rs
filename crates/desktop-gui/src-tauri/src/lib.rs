@@ -1,4 +1,4 @@
-use desktop_core::models::{Author, Branch, Commit, PullRequest, RepositoryStatus};
+use desktop_core::models::{Author, Branch, Commit, PullRequest, RepositoryStatus, StashEntry};
 use desktop_core::Diff;
 use desktop_git::GitClient;
 use desktop_github::GitHubClient;
@@ -144,6 +144,54 @@ fn checkout_branch(name: String, state: State<'_, AppState>) -> Result<(), Strin
 fn create_branch(name: String, state: State<'_, AppState>) -> Result<(), String> {
     let git = get_git(&state)?;
     git.create_branch(&name, None).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_branch(name: String, force: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.delete_branch(&name, force).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn rename_branch(old_name: String, new_name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.rename_branch(&old_name, &new_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn merge_branch(branch: String, state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    git.merge(&branch).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn abort_merge(state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    git.abort_merge().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stash_save(message: Option<String>, keep_index: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.stash_save(message.as_deref(), keep_index).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stash_pop(index: Option<usize>, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.stash_pop(index).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stash_drop(index: usize, state: State<'_, AppState>) -> Result<(), String> {
+    let git = get_git(&state)?;
+    git.stash_drop(index).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_stashes(state: State<'_, AppState>) -> Result<Vec<StashEntry>, String> {
+    let git = get_git(&state)?;
+    git.stash_list().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -550,6 +598,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
 
     // 6. Branch Menu
     let new_branch = MenuItem::with_id(app, "create-branch", "New Branch…", true, Some("CmdOrControl+Shift+N"))?;
+    let merge_branch_item = MenuItem::with_id(app, "merge-into-current-branch", "Merge into Current Branch…", true, Some("CmdOrControl+Shift+M"))?;
     let discard_all = MenuItem::with_id(app, "discard-all-changes", "Discard All Changes…", true, Some("CmdOrControl+Shift+Backspace"))?;
     let stash_all = MenuItem::with_id(app, "stash-all-changes", "Stash All Changes…", true, Some("CmdOrControl+Shift+S"))?;
     let compare_github = MenuItem::with_id(app, "compare-on-github", "Compare on GitHub", true, Some("CmdOrControl+Shift+C"))?;
@@ -561,6 +610,8 @@ fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
         true,
         &[
             &new_branch,
+            &merge_branch_item,
+            &sep()?,
             &discard_all,
             &stash_all,
             &sep()?,
@@ -653,6 +704,14 @@ pub fn run() {
             get_branches,
             checkout_branch,
             create_branch,
+            delete_branch,
+            rename_branch,
+            merge_branch,
+            abort_merge,
+            stash_save,
+            stash_pop,
+            stash_drop,
+            get_stashes,
             sync_remote,
             get_commits,
             get_commit_diff,

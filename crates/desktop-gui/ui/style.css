@@ -350,6 +350,40 @@ body {
   transform: rotate(45deg);
 }
 
+/* Stash Banner */
+.stash-banner {
+  background-color: var(--bg-hover);
+  border-bottom: 1px solid var(--border-color);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.stash-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stash-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.stash-banner-actions .btn-subtle {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 /* File List */
 .file-list {
   flex: 1;

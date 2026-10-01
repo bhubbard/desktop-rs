@@ -29,6 +29,8 @@ const state = {
   branches: [],
   repositories: [],
   pullRequests: [],
+  stashes: [],
+  selectedMergeBranch: null,
   isSyncing: false,
 };
 
@@ -62,6 +64,11 @@ const el = {
   changesSummaryCount: document.getElementById('changes-summary-count'),
   selectAllCheckbox: document.getElementById('select-all-checkbox'),
   fileList: document.getElementById('file-list'),
+
+  stashBanner: document.getElementById('stash-banner'),
+  stashBannerText: document.getElementById('stash-banner-text'),
+  stashRestoreBtn: document.getElementById('stash-restore-btn'),
+  stashDiscardBtn: document.getElementById('stash-discard-btn'),
 
   commitSummary: document.getElementById('commit-summary'),
   commitDescription: document.getElementById('commit-description'),
@@ -98,6 +105,15 @@ const el = {
   newBranchName: document.getElementById('new-branch-name'),
   createBranchBtn: document.getElementById('create-branch-btn'),
 
+  mergeModal: document.getElementById('merge-modal'),
+  mergeModalClose: document.getElementById('merge-modal-close'),
+  mergeTargetBranch: document.getElementById('merge-target-branch'),
+  mergeTargetBranchText: document.getElementById('merge-target-branch-text'),
+  mergeSearchInput: document.getElementById('merge-search-input'),
+  modalMergeBranchList: document.getElementById('modal-merge-branch-list'),
+  mergeCancelBtn: document.getElementById('merge-cancel-btn'),
+  mergeConfirmBtn: document.getElementById('merge-confirm-btn'),
+
   prModal: document.getElementById('pr-modal'),
   prModalClose: document.getElementById('pr-modal-close'),
   prList: document.getElementById('pr-list'),
@@ -122,6 +138,14 @@ const el = {
   cloneRepoDestInput: document.getElementById('clone-repo-dest-input'),
   cloneRepoCancelBtn: document.getElementById('clone-repo-cancel-btn'),
   cloneRepoConfirmBtn: document.getElementById('clone-repo-confirm-btn'),
+
+  settingsModal: document.getElementById('settings-modal'),
+  settingsModalClose: document.getElementById('settings-modal-close'),
+  settingsUserName: document.getElementById('settings-user-name'),
+  settingsUserEmail: document.getElementById('settings-user-email'),
+  settingsEditorSelect: document.getElementById('settings-editor-select'),
+  settingsCancelBtn: document.getElementById('settings-cancel-btn'),
+  settingsSaveBtn: document.getElementById('settings-save-btn'),
 
   aboutModal: document.getElementById('about-modal'),
   aboutModalCloseBtn: document.getElementById('about-modal-close-btn'),
@@ -150,6 +174,33 @@ async function init() {
     await loadCommits();
   } catch (err) {
     console.error('Failed to load commits:', err);
+  }
+  try {
+    await refreshStash();
+  } catch (err) {
+    console.error('Failed to refresh stash:', err);
+  }
+}
+
+async function refreshStash() {
+  try {
+    const stashes = await invoke('get_stashes');
+    state.stashes = stashes || [];
+    const currBranch = state.status?.branch || 'main';
+    const branchStash = state.stashes.find(s => s.branch === currBranch || s.branch === 'HEAD');
+    if (branchStash) {
+      el.stashBannerText.textContent = `Stashed changes on ${branchStash.branch} (${branchStash.message})`;
+      el.stashBanner.style.display = 'flex';
+      el.stashBanner.dataset.index = branchStash.index;
+    } else if (state.stashes.length > 0) {
+      el.stashBannerText.textContent = `1 stash entry available (${state.stashes[0].message})`;
+      el.stashBanner.style.display = 'flex';
+      el.stashBanner.dataset.index = state.stashes[0].index;
+    } else {
+      el.stashBanner.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to get stashes:', err);
   }
 }
 
@@ -558,6 +609,67 @@ function renderBranchList(branches, filter = '') {
   });
 }
 
+async function openMergeModal() {
+  const branches = await invoke('get_branches');
+  state.branches = branches || [];
+  const curr = state.status?.branch || 'main';
+  el.mergeTargetBranch.textContent = curr;
+  el.mergeTargetBranchText.textContent = curr;
+  state.selectedMergeBranch = null;
+  el.mergeConfirmBtn.disabled = true;
+  el.mergeConfirmBtn.textContent = 'Merge Branch';
+  el.mergeSearchInput.value = '';
+  renderMergeBranchList(state.branches, curr, '');
+  el.mergeModal.classList.add('open');
+  el.mergeSearchInput.focus();
+}
+
+function renderMergeBranchList(branches, currentBranch, filter = '') {
+  el.modalMergeBranchList.innerHTML = '';
+  const filtered = branches.filter(b => 
+    !b.is_current &&
+    b.name !== currentBranch &&
+    b.name.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    el.modalMergeBranchList.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 12px;">No other branches available to merge</div>';
+    return;
+  }
+
+  filtered.forEach(branch => {
+    const row = document.createElement('div');
+    row.className = `modal-branch-row ${state.selectedMergeBranch === branch.name ? 'current' : ''}`;
+    row.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <svg class="octicon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+          <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
+        </svg>
+        <span style="font-weight: 500;">${escapeHtml(branch.name)}</span>
+      </div>
+      <span style="font-size: 11px; color: var(--text-dim);">${branch.is_remote ? 'Remote' : 'Local'}</span>
+    `;
+
+    row.addEventListener('click', () => {
+      state.selectedMergeBranch = branch.name;
+      const allRows = el.modalMergeBranchList.querySelectorAll('.modal-branch-row');
+      allRows.forEach(r => r.classList.remove('current'));
+      row.classList.add('current');
+      el.mergeConfirmBtn.disabled = false;
+      el.mergeConfirmBtn.textContent = `Merge ${branch.name} into ${currentBranch}`;
+    });
+
+    el.modalMergeBranchList.appendChild(row);
+  });
+}
+
+function openSettingsModal() {
+  el.settingsUserName.value = localStorage.getItem('desktop_user_name') || 'Brandon Hubbard';
+  el.settingsUserEmail.value = localStorage.getItem('desktop_user_email') || 'bhubbard@users.noreply.github.com';
+  el.settingsEditorSelect.value = localStorage.getItem('desktop_editor') || 'zed';
+  el.settingsModal.classList.add('open');
+}
+
 function renderRepoList(repos, filter = '') {
   el.modalRepoList.innerHTML = '';
   const term = (filter || '').toLowerCase().trim();
@@ -639,6 +751,39 @@ function setupEventListeners() {
       selectCommit(state.commits[0], true);
     }
   });
+
+  // Stash Banner Actions
+  if (el.stashRestoreBtn) {
+    el.stashRestoreBtn.addEventListener('click', async () => {
+      try {
+        const idx = parseInt(el.stashBanner.dataset.index || '0', 10);
+        await invoke('stash_pop', { index: idx });
+        showToast('Restored stashed changes');
+        await Promise.all([
+          refreshStatus(),
+          refreshRepoInfo(),
+          refreshStash()
+        ]);
+      } catch (err) {
+        showToast(`Stash restore failed: ${err}`, true);
+      }
+    });
+  }
+
+  if (el.stashDiscardBtn) {
+    el.stashDiscardBtn.addEventListener('click', async () => {
+      const idx = parseInt(el.stashBanner.dataset.index || '0', 10);
+      if (confirm('Are you sure you want to discard these stashed changes?')) {
+        try {
+          await invoke('stash_drop', { index: idx });
+          showToast('Discarded stash');
+          await refreshStash();
+        } catch (err) {
+          showToast(`Stash discard failed: ${err}`, true);
+        }
+      }
+    });
+  }
 
   // History Filter
   if (el.historyFilter) {
@@ -954,6 +1099,50 @@ function setupEventListeners() {
     }
   });
 
+  // Merge Branch Modal
+  if (el.mergeModalClose) el.mergeModalClose.addEventListener('click', () => el.mergeModal.classList.remove('open'));
+  if (el.mergeCancelBtn) el.mergeCancelBtn.addEventListener('click', () => el.mergeModal.classList.remove('open'));
+  if (el.mergeSearchInput) {
+    el.mergeSearchInput.addEventListener('input', (e) => {
+      renderMergeBranchList(state.branches, state.status?.branch || 'main', e.target.value);
+    });
+  }
+  if (el.mergeConfirmBtn) {
+    el.mergeConfirmBtn.addEventListener('click', async () => {
+      if (!state.selectedMergeBranch) return;
+      try {
+        showToast(`Merging ${state.selectedMergeBranch}…`);
+        const res = await invoke('merge_branch', { branch: state.selectedMergeBranch });
+        showToast(res || `Merged ${state.selectedMergeBranch}`);
+        el.mergeModal.classList.remove('open');
+        await Promise.all([
+          refreshRepoInfo(),
+          refreshStatus(),
+          loadCommits(),
+          refreshStash()
+        ]);
+      } catch (err) {
+        showToast(`Merge failed: ${err}`, true);
+      }
+    });
+  }
+
+  // Settings / Preferences Modal
+  if (el.settingsModalClose) el.settingsModalClose.addEventListener('click', () => el.settingsModal.classList.remove('open'));
+  if (el.settingsCancelBtn) el.settingsCancelBtn.addEventListener('click', () => el.settingsModal.classList.remove('open'));
+  if (el.settingsSaveBtn) {
+    el.settingsSaveBtn.addEventListener('click', () => {
+      const name = el.settingsUserName.value.trim();
+      const email = el.settingsUserEmail.value.trim();
+      const editor = el.settingsEditorSelect.value;
+      if (name) localStorage.setItem('desktop_user_name', name);
+      if (email) localStorage.setItem('desktop_user_email', email);
+      if (editor) localStorage.setItem('desktop_editor', editor);
+      showToast('Settings saved');
+      el.settingsModal.classList.remove('open');
+    });
+  }
+
   // About Modal
   el.aboutModalCloseBtn.addEventListener('click', () => el.aboutModal.classList.remove('open'));
 
@@ -964,6 +1153,8 @@ function setupEventListeners() {
     el.newRepoModal,
     el.addRepoModal,
     el.cloneRepoModal,
+    el.mergeModal,
+    el.settingsModal,
     el.aboutModal,
   ];
 
@@ -1015,7 +1206,7 @@ async function handleMenuCommand(id) {
       el.cloneRepoUrlInput.focus();
       break;
     case 'preferences':
-      showToast('Settings: Git user & credentials auto-loaded from local Git keychain');
+      openSettingsModal();
       break;
     case 'show-changes':
       el.tabChanges.click();
@@ -1032,6 +1223,9 @@ async function handleMenuCommand(id) {
     case 'create-branch':
       el.branchBtn.click();
       setTimeout(() => el.newBranchName.focus(), 100);
+      break;
+    case 'merge-into-current-branch':
+      openMergeModal();
       break;
     case 'push':
     case 'pull':
@@ -1067,9 +1261,13 @@ async function handleMenuCommand(id) {
       break;
     case 'stash-all-changes':
       try {
-        await invoke('stage_all');
-        showToast('Stashed changes');
-        await refreshStatus();
+        await invoke('stash_save', { message: null, keepIndex: false });
+        showToast('Stashed all changes');
+        await Promise.all([
+          refreshStatus(),
+          refreshRepoInfo(),
+          refreshStash()
+        ]);
       } catch (e) {
         showToast(`Stash error: ${e}`, true);
       }

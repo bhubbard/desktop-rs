@@ -388,6 +388,42 @@ impl GitClient {
         Ok(())
     }
 
+    pub fn rename_branch(&self, old_name: &str, new_name: &str) -> Result<()> {
+        self.run_git(&["branch", "-m", old_name, new_name])?;
+        Ok(())
+    }
+
+    pub fn merge(&self, branch: &str) -> Result<String> {
+        self.run_git(&["merge", "--no-ff", branch])
+    }
+
+    pub fn abort_merge(&self) -> Result<String> {
+        self.run_git(&["merge", "--abort"])
+    }
+
+    pub fn create_tag(&self, name: &str, target_sha: Option<&str>) -> Result<()> {
+        let mut args = vec!["tag", name];
+        if let Some(sha) = target_sha {
+            args.push(sha);
+        }
+        self.run_git(&args)?;
+        Ok(())
+    }
+
+    pub fn delete_tag(&self, name: &str) -> Result<()> {
+        self.run_git(&["tag", "-d", name])?;
+        Ok(())
+    }
+
+    pub fn tags(&self) -> Result<Vec<String>> {
+        let output = self.run_git(&["tag", "-l"])?;
+        Ok(output
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect())
+    }
+
     pub fn fetch(&self, remote: Option<&str>) -> Result<()> {
         let r = remote.unwrap_or("origin");
         self.run_git(&["fetch", r])?;
@@ -660,4 +696,50 @@ mod tests {
         assert!(log[0].summary.contains("Revert"));
         assert!(!file_path.exists());
     }
+
+    #[test]
+    fn test_branch_merge_and_rename() {
+        let (dir, client) = setup_test_repo();
+        let file_path = dir.path().join("base.txt");
+        std::fs::write(&file_path, "base\n").unwrap();
+        client.stage_file("base.txt").unwrap();
+        client.commit("Base commit", None, &[]).unwrap();
+
+        // Create feature branch
+        client.create_branch("feature-1", None).unwrap();
+        let feat_file = dir.path().join("feat.txt");
+        std::fs::write(&feat_file, "feat content\n").unwrap();
+        client.stage_file("feat.txt").unwrap();
+        client.commit("Add feat", None, &[]).unwrap();
+
+        // Rename branch
+        client.rename_branch("feature-1", "feature-renamed").unwrap();
+        let branches = client.branches().unwrap();
+        assert!(branches.iter().any(|b| b.name == "feature-renamed"));
+
+        // Switch back to main and merge
+        client.checkout("main").unwrap();
+        client.merge("feature-renamed").unwrap();
+
+        assert!(feat_file.exists());
+        let log = client.log(1).unwrap();
+        assert!(log[0].summary.contains("Merge branch"));
+    }
+
+    #[test]
+    fn test_tags() {
+        let (dir, client) = setup_test_repo();
+        let file_path = dir.path().join("base.txt");
+        std::fs::write(&file_path, "base\n").unwrap();
+        client.stage_file("base.txt").unwrap();
+        client.commit("Initial", None, &[]).unwrap();
+
+        client.create_tag("v1.0.0", None).unwrap();
+        let tags = client.tags().unwrap();
+        assert_eq!(tags, vec!["v1.0.0"]);
+
+        client.delete_tag("v1.0.0").unwrap();
+        assert!(client.tags().unwrap().is_empty());
+    }
 }
+

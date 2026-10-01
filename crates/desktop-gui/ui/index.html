@@ -91,6 +91,20 @@
 
       <!-- View: Changes Panel -->
       <section class="tab-view active" id="view-changes">
+        <!-- Stash Banner (if current branch has stashed changes) -->
+        <div class="stash-banner" id="stash-banner" style="display: none;">
+          <div class="stash-banner-info">
+            <svg class="octicon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M2.5 3.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Z"/>
+            </svg>
+            <span id="stash-banner-text">Stashed changes</span>
+          </div>
+          <div class="stash-banner-actions">
+            <button class="btn-subtle" id="stash-restore-btn" title="Restore stashed changes into working directory">Restore</button>
+            <button class="btn-subtle danger" id="stash-discard-btn" title="Discard this stash">Discard</button>
+          </div>
+        </div>
+
         <div class="changes-header">
           <label class="checkbox-container">
             <input type="checkbox" id="select-all-checkbox" checked>
@@ -317,6 +331,71 @@
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
         <button class="btn-subtle" id="clone-repo-cancel-btn">Cancel</button>
         <button class="btn-primary" id="clone-repo-confirm-btn">Clone</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge Branch Modal (Branch -> Merge into Current Branch...) -->
+  <div class="modal-backdrop" id="merge-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Merge into <span id="merge-target-branch">main</span></h3>
+        <button class="modal-close" id="merge-modal-close">&times;</button>
+      </div>
+      <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+          Select a branch to merge into <strong id="merge-target-branch-text" style="color: var(--text-main);">main</strong>:
+        </p>
+        <input type="text" id="merge-search-input" class="modal-input" placeholder="Filter branches..." autocomplete="off">
+        <div id="modal-merge-branch-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-card);">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+        <button class="btn-subtle" id="merge-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="merge-confirm-btn" disabled>Merge Branch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings / Preferences Modal (GitHub Desktop -> Settings...) -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-card" style="width: 480px;">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="modal-close" id="settings-modal-close">&times;</button>
+      </div>
+      <div style="padding: 18px; display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-main);">Git Configuration</h4>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div>
+              <label style="display:block; margin-bottom: 4px; font-size: 11.5px; color: var(--text-muted);">Name</label>
+              <input type="text" id="settings-user-name" class="modal-input" placeholder="Your Name" autocomplete="off">
+            </div>
+            <div>
+              <label style="display:block; margin-bottom: 4px; font-size: 11.5px; color: var(--text-muted);">Email</label>
+              <input type="email" id="settings-user-email" class="modal-input" placeholder="your.email@example.com" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div style="border-top: 1px solid var(--border-muted); padding-top: 14px;">
+          <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-main);">Integrations</h4>
+          <div>
+            <label style="display:block; margin-bottom: 4px; font-size: 11.5px; color: var(--text-muted);">External Editor</label>
+            <select id="settings-editor-select" class="modal-input" style="cursor: pointer;">
+              <option value="zed">Zed</option>
+              <option value="code">Visual Studio Code</option>
+              <option value="cursor">Cursor</option>
+              <option value="subl">Sublime Text</option>
+              <option value="open">System Default</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+        <button class="btn-subtle" id="settings-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="settings-save-btn">Save Settings</button>
       </div>
     </div>
   </div>
