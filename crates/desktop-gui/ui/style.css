@@ -107,14 +107,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  -webkit-app-region: drag;
+  padding: 0;
   position: relative;
   z-index: 100;
 }
 
+[data-tauri-drag-region] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .header-traffic-lights-spacer {
-  width: 70px;
+  width: 80px;
   height: 100%;
   flex-shrink: 0;
 }
@@ -125,11 +129,16 @@ body {
   min-width: 40px;
 }
 
+.header-drag-space-end {
+  width: 16px;
+  height: 100%;
+  flex-shrink: 0;
+}
+
 .header-segments {
   display: flex;
   align-items: center;
   gap: 8px;
-  -webkit-app-region: no-drag;
 }
 
 .segment-btn {
@@ -191,7 +200,6 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  -webkit-app-region: no-drag;
 }
 
 .header-action-btn {

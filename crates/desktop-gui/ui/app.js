@@ -809,24 +809,23 @@ async function handleMenuCommand(id) {
 }
 
 function setupWindowDragging() {
-  document.addEventListener('mousedown', (e) => {
+  // Native window dragging on [data-tauri-drag-region] is handled by Tauri's core runtime.
+  // Add macOS titlebar double-click to toggle maximize:
+  document.addEventListener('dblclick', async (e) => {
     if (e.button !== 0) return;
-
-    // Do not initiate drag if interacting with controls
     const isInteractive = e.target.closest(
-      'button, input, textarea, a, select, [role="button"], .modal-content, [data-no-drag]'
+      'button, input, textarea, a, select, [role="button"], .modal-content'
     );
     if (isInteractive) return;
 
-    // If clicking on header, drag spaces, traffic lights spacer, or data-tauri-drag-region
-    const isDragArea = e.target.closest(
-      '.app-header, [data-tauri-drag-region], .header-traffic-lights-spacer, .header-drag-space'
-    );
+    const isDragArea = e.target.closest('[data-tauri-drag-region]');
     if (isDragArea) {
-      if (window.__TAURI__ && window.__TAURI__.window) {
-        window.__TAURI__.window.getCurrentWindow().startDragging();
-      } else {
-        invoke('start_dragging').catch(() => {});
+      try {
+        if (window.__TAURI__ && window.__TAURI__.window) {
+          await window.__TAURI__.window.getCurrentWindow().toggleMaximize();
+        }
+      } catch (err) {
+        console.error('Toggle maximize failed:', err);
       }
     }
   });
