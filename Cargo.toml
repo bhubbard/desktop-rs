@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/desktop-core",
+    "crates/desktop-git",
+    "crates/desktop-github",
+    "crates/desktop-tui",
+    "crates/desktop-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Brandon Hubbard <bhubbard@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bhubbard/desktop-rs"
+homepage = "https://github.com/bhubbard/desktop-rs"
+readme = "README.md"
+keywords = ["git", "github", "desktop", "git-client", "tui"]
+categories = ["command-line-utilities", "development-tools::version-control"]
+
+[workspace.dependencies]
+desktop-core = { path = "crates/desktop-core", version = "0.1.0" }
+desktop-git = { path = "crates/desktop-git", version = "0.1.0" }
+desktop-github = { path = "crates/desktop-github", version = "0.1.0" }
+desktop-tui = { path = "crates/desktop-tui", version = "0.1.0" }
+
+tokio = { version = "1.40", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env", "cargo"] }
+colored = "3.0"
+ratatui = "0.29"
+crossterm = "0.28"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.11"
+tempfile = "3.17"

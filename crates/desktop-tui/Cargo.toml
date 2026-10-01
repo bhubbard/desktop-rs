@@ -1,0 +1,17 @@
+[package]
+name = "desktop-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal User Interface (TUI) replicating GitHub Desktop in pure Rust"
+
+[dependencies]
+desktop-core = { workspace = true }
+desktop-git = { workspace = true }
+desktop-github = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }

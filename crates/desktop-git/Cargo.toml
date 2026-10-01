@@ -1,0 +1,18 @@
+[package]
+name = "desktop-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-performance Git subprocess and porcelain engine for desktop-rs"
+
+[dependencies]
+desktop-core = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

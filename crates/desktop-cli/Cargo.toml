@@ -1,0 +1,30 @@
+[package]
+name = "desktop-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line interface and binary launcher for desktop-rs"
+
+[[bin]]
+name = "desktop"
+path = "src/main.rs"
+
+[[bin]]
+name = "github-desktop"
+path = "src/bin/github_desktop.rs"
+
+[lib]
+name = "desktop_cli"
+path = "src/lib.rs"
+
+[dependencies]
+desktop-core = { workspace = true }
+desktop-git = { workspace = true }
+desktop-github = { workspace = true }
+desktop-tui = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+colored = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,6 @@
+/target
+coverage_report
+target/coverage
+lcov.info
+.DS_Store
+*.log
