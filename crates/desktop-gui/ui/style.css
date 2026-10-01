@@ -966,25 +966,40 @@ body {
   flex: 1;
   overflow-y: auto;
   max-height: 340px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-sizing: border-box;
 }
 
-.branch-row, .pr-row {
-  padding: 8px 16px;
+.modal-branch-row,
+.branch-row,
+.pr-row {
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-muted);
+  border-radius: 6px;
   font-size: 12.5px;
+  border: 1px solid transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-.branch-row:hover, .pr-row:hover {
+.modal-branch-row:hover,
+.branch-row:hover,
+.pr-row:hover {
   background-color: var(--bg-hover);
 }
 
+.modal-branch-row.current,
 .branch-row.current {
-  font-weight: 600;
-  color: var(--accent);
+  background-color: var(--bg-selected);
+  border-color: var(--border-color);
+  font-weight: 500;
 }
 
 .modal-footer {
