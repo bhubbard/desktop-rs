@@ -115,7 +115,14 @@ body {
 
 .header-traffic-lights-spacer {
   width: 70px;
+  height: 100%;
   flex-shrink: 0;
+}
+
+.header-drag-space {
+  flex: 1;
+  height: 100%;
+  min-width: 40px;
 }
 
 .header-segments {

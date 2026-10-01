@@ -268,6 +268,11 @@ fn switch_repository(new_path: String, state: State<'_, AppState>) -> Result<Rep
     })
 }
 
+#[tauri::command]
+fn start_dragging(window: tauri::Window) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
 pub fn run() {
     let initial_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
@@ -298,7 +303,8 @@ pub fn run() {
             open_in_editor,
             reveal_in_finder,
             open_in_terminal,
-            switch_repository
+            switch_repository,
+            start_dragging
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

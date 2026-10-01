@@ -589,6 +589,33 @@ function setupEventListeners() {
       }
     });
   });
+
+  // Enable window dragging across titlebar and drag regions
+  setupWindowDragging();
+}
+
+function setupWindowDragging() {
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+
+    // Do not initiate drag if interacting with controls
+    const isInteractive = e.target.closest(
+      'button, input, textarea, a, select, [role="button"], .modal-content, [data-no-drag]'
+    );
+    if (isInteractive) return;
+
+    // If clicking on header, drag spaces, traffic lights spacer, or data-tauri-drag-region
+    const isDragArea = e.target.closest(
+      '.app-header, [data-tauri-drag-region], .header-traffic-lights-spacer, .header-drag-space'
+    );
+    if (isDragArea) {
+      if (window.__TAURI__ && window.__TAURI__.window) {
+        window.__TAURI__.window.getCurrentWindow().startDragging();
+      } else {
+        invoke('start_dragging').catch(() => {});
+      }
+    }
+  });
 }
 
 function escapeHtml(str) {

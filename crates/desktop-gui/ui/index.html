@@ -8,12 +8,12 @@
 </head>
 <body>
   <!-- Top Application Toolbar (macOS Style) -->
-  <header class="app-header">
-    <div class="header-traffic-lights-spacer"></div>
+  <header class="app-header" data-tauri-drag-region>
+    <div class="header-traffic-lights-spacer" data-tauri-drag-region></div>
 
     <div class="header-segments">
       <!-- Current Repository Segment -->
-      <button class="segment-btn" id="repo-btn" title="Current Repository">
+      <button class="segment-btn" id="repo-btn" title="Current Repository" data-no-drag>
         <div class="segment-label">Current Repository</div>
         <div class="segment-content">
           <svg class="octicon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
@@ -27,7 +27,7 @@
       </button>
 
       <!-- Current Branch Segment -->
-      <button class="segment-btn" id="branch-btn" title="Current Branch">
+      <button class="segment-btn" id="branch-btn" title="Current Branch" data-no-drag>
         <div class="segment-label">Current Branch</div>
         <div class="segment-content">
           <svg class="octicon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
@@ -42,7 +42,7 @@
       </button>
 
       <!-- Sync / Fetch Segment -->
-      <button class="segment-btn" id="sync-btn" title="Sync with remote">
+      <button class="segment-btn" id="sync-btn" title="Sync with remote" data-no-drag>
         <div class="segment-label" id="sync-sublabel">Fetch origin</div>
         <div class="segment-content">
           <svg class="octicon" id="sync-spinner" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
@@ -52,6 +52,9 @@
         </div>
       </button>
     </div>
+
+    <!-- Wide Header Drag Region -->
+    <div class="header-drag-space" data-tauri-drag-region></div>
 
     <!-- Header Actions (Right) -->
     <div class="header-actions">
