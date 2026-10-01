@@ -273,11 +273,297 @@ fn start_dragging(window: tauri::Window) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
 }
 
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::Emitter;
+
+#[tauri::command]
+fn init_repository(
+    name: String,
+    parent_path: String,
+    init_readme: bool,
+    state: State<'_, AppState>,
+) -> Result<RepoSummary, String> {
+    let target_dir = PathBuf::from(&parent_path).join(&name);
+    std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+
+    let output = Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(&target_dir)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    if init_readme {
+        let readme_path = target_dir.join("README.md");
+        std::fs::write(&readme_path, format!("# {name}\n")).map_err(|e| e.to_string())?;
+        let _ = Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&target_dir)
+            .output();
+        let _ = Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(&target_dir)
+            .output();
+    }
+
+    let git = GitClient::new(&target_dir).map_err(|e| e.to_string())?;
+    let status = git.status().map_err(|e| e.to_string())?;
+
+    if let Ok(mut curr) = state.current_repo.lock() {
+        *curr = target_dir;
+    }
+
+    let is_clean = status.is_clean();
+    let total_changes = status.total_changes();
+    Ok(RepoSummary {
+        name: git.repo_name(),
+        path: git.repo_path().display().to_string(),
+        branch: status.branch,
+        upstream: status.upstream,
+        ahead: status.ahead,
+        behind: status.behind,
+        is_clean,
+        total_changes,
+    })
+}
+
+#[tauri::command]
+fn clone_repository(
+    url: String,
+    destination: String,
+    state: State<'_, AppState>,
+) -> Result<RepoSummary, String> {
+    let dest_buf = PathBuf::from(&destination);
+    let output = Command::new("git")
+        .args(["clone", &url, &destination])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let git = GitClient::open_or_find(&dest_buf).map_err(|e| e.to_string())?;
+    let status = git.status().map_err(|e| e.to_string())?;
+
+    if let Ok(mut curr) = state.current_repo.lock() {
+        *curr = git.repo_path().to_path_buf();
+    }
+
+    let is_clean = status.is_clean();
+    let total_changes = status.total_changes();
+    Ok(RepoSummary {
+        name: git.repo_name(),
+        path: git.repo_path().display().to_string(),
+        branch: status.branch,
+        upstream: status.upstream,
+        ahead: status.ahead,
+        behind: status.behind,
+        is_clean,
+        total_changes,
+    })
+}
+
+fn build_app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let sep = || PredefinedMenuItem::separator(app);
+
+    // 1. App Menu (GitHub Desktop)
+    let about = PredefinedMenuItem::about(app, Some("GitHub Desktop"), None)?;
+    let settings = MenuItem::with_id(app, "preferences", "Settings…", true, Some("CmdOrControl+,"))?;
+    let services = PredefinedMenuItem::services(app, None)?;
+    let hide = PredefinedMenuItem::hide(app, Some("Hide GitHub Desktop"))?;
+    let hide_others = PredefinedMenuItem::hide_others(app, Some("Hide Others"))?;
+    let show_all = PredefinedMenuItem::show_all(app, Some("Show All"))?;
+    let quit = PredefinedMenuItem::quit(app, Some("Quit GitHub Desktop"))?;
+
+    let app_menu = Submenu::with_items(
+        app,
+        "GitHub Desktop",
+        true,
+        &[
+            &about,
+            &sep()?,
+            &settings,
+            &sep()?,
+            &services,
+            &sep()?,
+            &hide,
+            &hide_others,
+            &show_all,
+            &sep()?,
+            &quit,
+        ],
+    )?;
+
+    // 2. File Menu
+    let new_repo = MenuItem::with_id(app, "new-repository", "New Repository…", true, Some("CmdOrControl+N"))?;
+    let add_local_repo = MenuItem::with_id(app, "add-local-repository", "Add Local Repository…", true, Some("CmdOrControl+O"))?;
+    let clone_repo = MenuItem::with_id(app, "clone-repository", "Clone Repository…", true, Some("CmdOrControl+Shift+O"))?;
+    let close_window = PredefinedMenuItem::close_window(app, None)?;
+
+    let file_menu = Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &new_repo,
+            &sep()?,
+            &add_local_repo,
+            &clone_repo,
+            &sep()?,
+            &close_window,
+        ],
+    )?;
+
+    // 3. Edit Menu
+    let undo = PredefinedMenuItem::undo(app, None)?;
+    let redo = PredefinedMenuItem::redo(app, None)?;
+    let cut = PredefinedMenuItem::cut(app, None)?;
+    let copy = PredefinedMenuItem::copy(app, None)?;
+    let paste = PredefinedMenuItem::paste(app, None)?;
+    let select_all = PredefinedMenuItem::select_all(app, None)?;
+
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &undo,
+            &redo,
+            &sep()?,
+            &cut,
+            &copy,
+            &paste,
+            &select_all,
+        ],
+    )?;
+
+    // 4. View Menu
+    let show_changes = MenuItem::with_id(app, "show-changes", "Changes", true, Some("CmdOrControl+1"))?;
+    let show_history = MenuItem::with_id(app, "show-history", "History", true, Some("CmdOrControl+2"))?;
+    let show_repos = MenuItem::with_id(app, "show-repository-list", "Repository List", true, Some("CmdOrControl+T"))?;
+    let show_branches = MenuItem::with_id(app, "show-branches-list", "Branches List", true, Some("CmdOrControl+B"))?;
+    let toggle_fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
+    let reload = MenuItem::with_id(app, "reload-window", "Reload", true, Some("CmdOrControl+Alt+R"))?;
+
+    let view_menu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &show_changes,
+            &show_history,
+            &show_repos,
+            &show_branches,
+            &sep()?,
+            &toggle_fullscreen,
+            &sep()?,
+            &reload,
+        ],
+    )?;
+
+    // 5. Repository Menu
+    let push = MenuItem::with_id(app, "push", "Push", true, Some("CmdOrControl+P"))?;
+    let pull = MenuItem::with_id(app, "pull", "Pull", true, Some("CmdOrControl+Shift+P"))?;
+    let fetch = MenuItem::with_id(app, "fetch", "Fetch", true, Some("CmdOrControl+Shift+T"))?;
+    let view_on_github = MenuItem::with_id(app, "view-repository-on-github", "View on GitHub", true, Some("CmdOrControl+Shift+G"))?;
+    let open_terminal = MenuItem::with_id(app, "open-in-shell", "Open in Terminal", true, Some("Control+`"))?;
+    let show_finder = MenuItem::with_id(app, "open-working-directory", "Show in Finder", true, Some("CmdOrControl+Shift+F"))?;
+    let open_editor = MenuItem::with_id(app, "open-external-editor", "Open in External Editor", true, Some("CmdOrControl+Shift+A"))?;
+
+    let repo_menu = Submenu::with_items(
+        app,
+        "Repository",
+        true,
+        &[
+            &push,
+            &pull,
+            &fetch,
+            &sep()?,
+            &view_on_github,
+            &open_terminal,
+            &show_finder,
+            &open_editor,
+        ],
+    )?;
+
+    // 6. Branch Menu
+    let new_branch = MenuItem::with_id(app, "create-branch", "New Branch…", true, Some("CmdOrControl+Shift+N"))?;
+    let discard_all = MenuItem::with_id(app, "discard-all-changes", "Discard All Changes…", true, Some("CmdOrControl+Shift+Backspace"))?;
+    let stash_all = MenuItem::with_id(app, "stash-all-changes", "Stash All Changes…", true, Some("CmdOrControl+Shift+S"))?;
+    let compare_github = MenuItem::with_id(app, "compare-on-github", "Compare on GitHub", true, Some("CmdOrControl+Shift+C"))?;
+    let create_pr = MenuItem::with_id(app, "create-pull-request", "Create Pull Request", true, Some("CmdOrControl+R"))?;
+
+    let branch_menu = Submenu::with_items(
+        app,
+        "Branch",
+        true,
+        &[
+            &new_branch,
+            &discard_all,
+            &stash_all,
+            &sep()?,
+            &compare_github,
+            &create_pr,
+        ],
+    )?;
+
+    // 7. Window Menu
+    let minimize = PredefinedMenuItem::minimize(app, None)?;
+    let bring_all = PredefinedMenuItem::bring_all_to_front(app, None)?;
+
+    let window_menu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &minimize,
+            &sep()?,
+            &bring_all,
+        ],
+    )?;
+
+    // 8. Help Menu
+    let report_issue = MenuItem::with_id(app, "report-issue", "Report Issue…", true, None::<&str>)?;
+    let docs = MenuItem::with_id(app, "show-docs", "GitHub Desktop Documentation", true, None::<&str>)?;
+
+    let help_menu = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[
+            &report_issue,
+            &docs,
+        ],
+    )?;
+
+    Menu::with_items(
+        app,
+        &[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &repo_menu,
+            &branch_menu,
+            &window_menu,
+            &help_menu,
+        ],
+    )
+}
+
 pub fn run() {
     let initial_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .menu(build_app_menu)
+        .on_menu_event(|app, event| {
+            let _ = app.emit("menu-event", event.id().as_ref());
+        })
         .manage(AppState {
             current_repo: Mutex::new(initial_path),
         })
@@ -304,7 +590,9 @@ pub fn run() {
             reveal_in_finder,
             open_in_terminal,
             switch_repository,
-            start_dragging
+            start_dragging,
+            init_repository,
+            clone_repository
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

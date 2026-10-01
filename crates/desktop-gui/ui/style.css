@@ -817,15 +817,21 @@ body {
   border-bottom: 1px solid var(--border-muted);
 }
 
-.modal-search input {
+.modal-search input,
+.modal-input {
   width: 100%;
   background-color: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-main);
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-size: 13px;
   outline: none;
+}
+
+.modal-input:focus,
+.modal-search input:focus {
+  border-color: var(--accent);
 }
 
 .modal-branch-list, .pr-list {

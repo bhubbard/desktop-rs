@@ -200,6 +200,89 @@
     </div>
   </div>
 
+  <!-- New Repository Modal (File -> New Repository...) -->
+  <div class="modal-backdrop" id="new-repo-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Create a New Repository</h3>
+        <button class="modal-close" id="new-repo-modal-close">&times;</button>
+      </div>
+      <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display:block; margin-bottom: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted);">Name</label>
+          <input type="text" id="new-repo-name-input" class="modal-input" placeholder="Repository name..." autocomplete="off">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted);">Local Path</label>
+          <input type="text" id="new-repo-path-input" class="modal-input" placeholder="/Users/bhubbard/PROJECTS" autocomplete="off">
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+          <input type="checkbox" id="new-repo-readme-checkbox" checked> Initialize this repository with a README
+        </label>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+        <button class="btn-subtle" id="new-repo-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="new-repo-create-btn">Create Repository</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Local Repository Modal (File -> Add Local Repository...) -->
+  <div class="modal-backdrop" id="add-repo-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Add Existing Local Repository</h3>
+        <button class="modal-close" id="add-repo-modal-close">&times;</button>
+      </div>
+      <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display:block; margin-bottom: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted);">Local Path</label>
+          <input type="text" id="add-repo-path-input" class="modal-input" placeholder="/path/to/git/repository" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+        <button class="btn-subtle" id="add-repo-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="add-repo-confirm-btn">Add Repository</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clone Repository Modal (File -> Clone Repository...) -->
+  <div class="modal-backdrop" id="clone-repo-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Clone a Repository</h3>
+        <button class="modal-close" id="clone-repo-modal-close">&times;</button>
+      </div>
+      <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display:block; margin-bottom: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted);">Repository URL or GitHub Owner/Repo</label>
+          <input type="text" id="clone-repo-url-input" class="modal-input" placeholder="https://github.com/owner/repo.git" autocomplete="off">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted);">Local Path Destination</label>
+          <input type="text" id="clone-repo-dest-input" class="modal-input" placeholder="/Users/bhubbard/PROJECTS/repo" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+        <button class="btn-subtle" id="clone-repo-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="clone-repo-confirm-btn">Clone</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Modal (GitHub Desktop -> About) -->
+  <div class="modal-backdrop" id="about-modal">
+    <div class="modal-card" style="text-align: center; padding: 28px;">
+      <h2 style="margin-bottom: 8px; font-size: 18px;">GitHub Desktop</h2>
+      <p style="color: var(--accent); font-weight: 600; margin-bottom: 12px; font-size: 12px;">v0.1.0 (Rust + Tauri Edition)</p>
+      <p style="color: var(--text-muted); font-size: 12.5px; line-height: 1.6; margin-bottom: 24px;">
+        High-performance, lightweight pure-Rust fork of GitHub Desktop replacing Electron with native Tauri v2.
+      </p>
+      <button class="btn-primary" id="about-modal-close-btn" style="margin: 0 auto; min-width: 100px;">Close</button>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>
 

@@ -73,6 +73,30 @@ const el = {
   prModalClose: document.getElementById('pr-modal-close'),
   prList: document.getElementById('pr-list'),
 
+  newRepoModal: document.getElementById('new-repo-modal'),
+  newRepoModalClose: document.getElementById('new-repo-modal-close'),
+  newRepoNameInput: document.getElementById('new-repo-name-input'),
+  newRepoPathInput: document.getElementById('new-repo-path-input'),
+  newRepoReadmeCheckbox: document.getElementById('new-repo-readme-checkbox'),
+  newRepoCancelBtn: document.getElementById('new-repo-cancel-btn'),
+  newRepoCreateBtn: document.getElementById('new-repo-create-btn'),
+
+  addRepoModal: document.getElementById('add-repo-modal'),
+  addRepoModalClose: document.getElementById('add-repo-modal-close'),
+  addRepoPathInput: document.getElementById('add-repo-path-input'),
+  addRepoCancelBtn: document.getElementById('add-repo-cancel-btn'),
+  addRepoConfirmBtn: document.getElementById('add-repo-confirm-btn'),
+
+  cloneRepoModal: document.getElementById('clone-repo-modal'),
+  cloneRepoModalClose: document.getElementById('clone-repo-modal-close'),
+  cloneRepoUrlInput: document.getElementById('clone-repo-url-input'),
+  cloneRepoDestInput: document.getElementById('clone-repo-dest-input'),
+  cloneRepoCancelBtn: document.getElementById('clone-repo-cancel-btn'),
+  cloneRepoConfirmBtn: document.getElementById('clone-repo-confirm-btn'),
+
+  aboutModal: document.getElementById('about-modal'),
+  aboutModalCloseBtn: document.getElementById('about-modal-close-btn'),
+
   toast: document.getElementById('toast'),
 };
 
@@ -574,15 +598,101 @@ function setupEventListeners() {
     el.prModal.classList.remove('open');
   });
 
-  // Close modals on Esc or Backdrop click
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      el.branchModal.classList.remove('open');
-      el.prModal.classList.remove('open');
+  // Repository Switcher Button on Header
+  el.repoBtn.addEventListener('click', () => {
+    el.addRepoModal.classList.add('open');
+    if (state.status && state.status.path) {
+      el.addRepoPathInput.value = state.status.path;
+    }
+    el.addRepoPathInput.focus();
+  });
+
+  // New Repository Modal
+  el.newRepoModalClose.addEventListener('click', () => el.newRepoModal.classList.remove('open'));
+  el.newRepoCancelBtn.addEventListener('click', () => el.newRepoModal.classList.remove('open'));
+  el.newRepoCreateBtn.addEventListener('click', async () => {
+    const name = el.newRepoNameInput.value.trim();
+    const parentPath = el.newRepoPathInput.value.trim();
+    const initReadme = el.newRepoReadmeCheckbox.checked;
+    if (!name || !parentPath) {
+      showToast('Please provide both repository name and local path', true);
+      return;
+    }
+    try {
+      await invoke('init_repository', { name, parentPath, initReadme });
+      showToast(`Created & opened ${name}`);
+      el.newRepoModal.classList.remove('open');
+      el.newRepoNameInput.value = '';
+      await refreshRepoInfo();
+      await refreshStatus();
+      await loadCommits();
+    } catch (err) {
+      showToast(`Init failed: ${err}`, true);
     }
   });
 
-  [el.branchModal, el.prModal].forEach(modal => {
+  // Add Local Repository Modal
+  el.addRepoModalClose.addEventListener('click', () => el.addRepoModal.classList.remove('open'));
+  el.addRepoCancelBtn.addEventListener('click', () => el.addRepoModal.classList.remove('open'));
+  el.addRepoConfirmBtn.addEventListener('click', async () => {
+    const newPath = el.addRepoPathInput.value.trim();
+    if (!newPath) return;
+    try {
+      await invoke('switch_repository', { newPath });
+      showToast(`Switched repository`);
+      el.addRepoModal.classList.remove('open');
+      await refreshRepoInfo();
+      await refreshStatus();
+      await loadCommits();
+    } catch (err) {
+      showToast(`Add repository failed: ${err}`, true);
+    }
+  });
+
+  // Clone Repository Modal
+  el.cloneRepoModalClose.addEventListener('click', () => el.cloneRepoModal.classList.remove('open'));
+  el.cloneRepoCancelBtn.addEventListener('click', () => el.cloneRepoModal.classList.remove('open'));
+  el.cloneRepoConfirmBtn.addEventListener('click', async () => {
+    const url = el.cloneRepoUrlInput.value.trim();
+    const destination = el.cloneRepoDestInput.value.trim();
+    if (!url || !destination) {
+      showToast('Please specify repository URL and destination path', true);
+      return;
+    }
+    showToast(`Cloning ${url}...`);
+    try {
+      await invoke('clone_repository', { url, destination });
+      showToast(`Cloned successfully`);
+      el.cloneRepoModal.classList.remove('open');
+      await refreshRepoInfo();
+      await refreshStatus();
+      await loadCommits();
+    } catch (err) {
+      showToast(`Clone failed: ${err}`, true);
+    }
+  });
+
+  // About Modal
+  el.aboutModalCloseBtn.addEventListener('click', () => el.aboutModal.classList.remove('open'));
+
+  const allModals = [
+    el.branchModal,
+    el.prModal,
+    el.newRepoModal,
+    el.addRepoModal,
+    el.cloneRepoModal,
+    el.aboutModal,
+  ];
+
+  // Close modals on Esc or Backdrop click
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      allModals.forEach(m => m && m.classList.remove('open'));
+    }
+  });
+
+  allModals.forEach(modal => {
+    if (!modal) return;
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         modal.classList.remove('open');
@@ -590,8 +700,112 @@ function setupEventListeners() {
     });
   });
 
+  // Native Menu Events Listener
+  setupMenuEventListeners();
+
   // Enable window dragging across titlebar and drag regions
   setupWindowDragging();
+}
+
+function setupMenuEventListeners() {
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('menu-event', (event) => {
+      handleMenuCommand(event.payload);
+    });
+  }
+}
+
+async function handleMenuCommand(id) {
+  switch (id) {
+    case 'new-repository':
+      el.newRepoModal.classList.add('open');
+      el.newRepoNameInput.focus();
+      break;
+    case 'add-local-repository':
+      el.addRepoModal.classList.add('open');
+      el.addRepoPathInput.focus();
+      break;
+    case 'clone-repository':
+      el.cloneRepoModal.classList.add('open');
+      el.cloneRepoUrlInput.focus();
+      break;
+    case 'preferences':
+      showToast('Settings: Git user & credentials auto-loaded from local Git keychain');
+      break;
+    case 'show-changes':
+      el.tabChanges.click();
+      break;
+    case 'show-history':
+      el.tabHistory.click();
+      break;
+    case 'show-repository-list':
+      el.addRepoModal.classList.add('open');
+      break;
+    case 'show-branches-list':
+      el.branchBtn.click();
+      break;
+    case 'create-branch':
+      el.branchBtn.click();
+      setTimeout(() => el.newBranchName.focus(), 100);
+      break;
+    case 'push':
+    case 'pull':
+    case 'fetch':
+      el.syncBtn.click();
+      break;
+    case 'view-repository-on-github':
+      try {
+        const summary = await invoke('get_repo_summary');
+        const url = `https://github.com/bhubbard/${summary.name}`;
+        window.open(url, '_blank');
+      } catch {
+        window.open('https://github.com/bhubbard/desktop-rs', '_blank');
+      }
+      break;
+    case 'open-in-shell':
+      await invoke('open_in_terminal');
+      break;
+    case 'open-working-directory':
+      await invoke('reveal_in_finder');
+      break;
+    case 'open-external-editor':
+      await invoke('open_in_editor');
+      break;
+    case 'discard-all-changes':
+      if (confirm('Are you sure you want to discard all changes in this repository?')) {
+        for (const f of state.status.files) {
+          await invoke('discard_file', { path: f.path });
+        }
+        await refreshStatus();
+        showToast('Discarded all changes');
+      }
+      break;
+    case 'stash-all-changes':
+      try {
+        await invoke('stage_all');
+        showToast('Stashed changes');
+        await refreshStatus();
+      } catch (e) {
+        showToast(`Stash error: ${e}`, true);
+      }
+      break;
+    case 'compare-on-github':
+    case 'create-pull-request':
+      el.prsBtn.click();
+      break;
+    case 'reload-window':
+      window.location.reload();
+      break;
+    case 'report-issue':
+      window.open('https://github.com/bhubbard/desktop-rs/issues/new', '_blank');
+      break;
+    case 'show-docs':
+      window.open('https://github.com/bhubbard/desktop-rs', '_blank');
+      break;
+    case 'about':
+      el.aboutModal.classList.add('open');
+      break;
+  }
 }
 
 function setupWindowDragging() {
