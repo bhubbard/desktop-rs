@@ -105,27 +105,35 @@ fn discard_file(path: String, state: State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn commit(
+async fn commit(
     summary: String,
     description: Option<String>,
     co_authors: Vec<Author>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let git = get_git(&state)?;
-    git.commit(&summary, description.as_deref(), &co_authors)
-        .map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || {
+        git.commit(&summary, description.as_deref(), &co_authors)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn undo_commit(state: State<'_, AppState>) -> Result<(), String> {
+async fn undo_commit(state: State<'_, AppState>) -> Result<(), String> {
     let git = get_git(&state)?;
-    git.undo_commit().map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.undo_commit().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn revert_commit(sha: String, state: State<'_, AppState>) -> Result<String, String> {
+async fn revert_commit(sha: String, state: State<'_, AppState>) -> Result<String, String> {
     let git = get_git(&state)?;
-    git.revert_commit(&sha).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.revert_commit(&sha).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -159,33 +167,45 @@ fn rename_branch(old_name: String, new_name: String, state: State<'_, AppState>)
 }
 
 #[tauri::command]
-fn merge_branch(branch: String, state: State<'_, AppState>) -> Result<String, String> {
+async fn merge_branch(branch: String, state: State<'_, AppState>) -> Result<String, String> {
     let git = get_git(&state)?;
-    git.merge(&branch).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.merge(&branch).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn abort_merge(state: State<'_, AppState>) -> Result<String, String> {
+async fn abort_merge(state: State<'_, AppState>) -> Result<String, String> {
     let git = get_git(&state)?;
-    git.abort_merge().map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.abort_merge().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn stash_save(message: Option<String>, keep_index: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn stash_save(message: Option<String>, keep_index: bool, state: State<'_, AppState>) -> Result<(), String> {
     let git = get_git(&state)?;
-    git.stash_save(message.as_deref(), keep_index).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || {
+        git.stash_save(message.as_deref(), keep_index).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn stash_pop(index: Option<usize>, state: State<'_, AppState>) -> Result<(), String> {
+async fn stash_pop(index: Option<usize>, state: State<'_, AppState>) -> Result<(), String> {
     let git = get_git(&state)?;
-    git.stash_pop(index).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.stash_pop(index).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn stash_drop(index: usize, state: State<'_, AppState>) -> Result<(), String> {
+async fn stash_drop(index: usize, state: State<'_, AppState>) -> Result<(), String> {
     let git = get_git(&state)?;
-    git.stash_drop(index).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || git.stash_drop(index).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -195,23 +215,93 @@ fn get_stashes(state: State<'_, AppState>) -> Result<Vec<StashEntry>, String> {
 }
 
 #[tauri::command]
-fn sync_remote(state: State<'_, AppState>) -> Result<String, String> {
+async fn sync_remote(state: State<'_, AppState>) -> Result<String, String> {
     let git = get_git(&state)?;
-    git.fetch(None).map_err(|e| e.to_string())?;
+    tokio::task::spawn_blocking(move || {
+        let status = git.status().map_err(|e| e.to_string())?;
 
-    let status = git.status().map_err(|e| e.to_string())?;
-    let mut message = String::from("Fetched from origin");
+        // 1. Ahead and not behind -> Push directly
+        if status.ahead > 0 && status.behind == 0 {
+            git.push(None, None, false).map_err(|e| e.to_string())?;
+            return Ok(format!(
+                "Pushed {} commit{}",
+                status.ahead,
+                if status.ahead == 1 { "" } else { "s" }
+            ));
+        }
 
-    if status.behind > 0 {
+        // 2. Behind and not ahead -> Pull directly
+        if status.behind > 0 && status.ahead == 0 {
+            git.pull(None, None, false).map_err(|e| e.to_string())?;
+            return Ok(format!(
+                "Pulled {} commit{}",
+                status.behind,
+                if status.behind == 1 { "" } else { "s" }
+            ));
+        }
+
+        // 3. Neither ahead nor behind -> Fetch from origin
+        if status.ahead == 0 && status.behind == 0 {
+            git.fetch(None).map_err(|e| e.to_string())?;
+            let status_after = git.status().map_err(|e| e.to_string())?;
+            if status_after.behind > 0 {
+                return Ok(format!(
+                    "Fetched from origin ({} commit{} to pull)",
+                    status_after.behind,
+                    if status_after.behind == 1 { "" } else { "s" }
+                ));
+            } else if status_after.ahead > 0 {
+                return Ok(format!(
+                    "Fetched from origin ({} commit{} to push)",
+                    status_after.ahead,
+                    if status_after.ahead == 1 { "" } else { "s" }
+                ));
+            } else {
+                return Ok(String::from("Fetched from origin (up to date)"));
+            }
+        }
+
+        // 4. Diverged (both ahead and behind) -> Fetch, Pull, Push
+        git.fetch(None).map_err(|e| e.to_string())?;
         git.pull(None, None, false).map_err(|e| e.to_string())?;
-        message = format!("Pulled {} commits", status.behind);
-    }
-    if status.ahead > 0 {
         git.push(None, None, false).map_err(|e| e.to_string())?;
-        message = format!("Pushed {} commits", status.ahead);
-    }
+        Ok(String::from("Synchronized with origin (pulled & pushed)"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    Ok(message)
+#[tauri::command]
+async fn push(state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    tokio::task::spawn_blocking(move || {
+        git.push(None, None, false).map_err(|e| e.to_string())?;
+        Ok(String::from("Pushed commits to origin"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn pull(state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    tokio::task::spawn_blocking(move || {
+        git.pull(None, None, false).map_err(|e| e.to_string())?;
+        Ok(String::from("Pulled commits from origin"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn fetch(state: State<'_, AppState>) -> Result<String, String> {
+    let git = get_git(&state)?;
+    tokio::task::spawn_blocking(move || {
+        git.fetch(None).map_err(|e| e.to_string())?;
+        Ok(String::from("Fetched from origin"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -510,37 +600,55 @@ fn init_repository(
 }
 
 #[tauri::command]
-fn clone_repository(
+async fn clone_repository(
     url: String,
     destination: String,
     state: State<'_, AppState>,
 ) -> Result<RepoSummary, String> {
     let dest_buf = PathBuf::from(&destination);
-    let output = Command::new("git")
-        .args(["clone", &url, &destination])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let dest_clone = dest_buf.clone();
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
+    let (repo_name, repo_path, branch, upstream, ahead, behind, is_clean, total_changes) =
+        tokio::task::spawn_blocking(move || -> Result<_, String> {
+            let output = Command::new("git")
+                .args(["clone", &url, &destination])
+                .output()
+                .map_err(|e| e.to_string())?;
 
-    let git = GitClient::open_or_find(&dest_buf).map_err(|e| e.to_string())?;
-    let status = git.status().map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).to_string());
+            }
+
+            let git = GitClient::open_or_find(&dest_buf).map_err(|e| e.to_string())?;
+            let status = git.status().map_err(|e| e.to_string())?;
+            let is_clean = status.is_clean();
+            let total_changes = status.total_changes();
+
+            Ok((
+                git.repo_name(),
+                git.repo_path().display().to_string(),
+                status.branch,
+                status.upstream,
+                status.ahead,
+                status.behind,
+                is_clean,
+                total_changes,
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
     if let Ok(mut curr) = state.current_repo.lock() {
-        *curr = git.repo_path().to_path_buf();
+        *curr = dest_clone;
     }
 
-    let is_clean = status.is_clean();
-    let total_changes = status.total_changes();
     Ok(RepoSummary {
-        name: git.repo_name(),
-        path: git.repo_path().display().to_string(),
-        branch: status.branch,
-        upstream: status.upstream,
-        ahead: status.ahead,
-        behind: status.behind,
+        name: repo_name,
+        path: repo_path,
+        branch,
+        upstream,
+        ahead,
+        behind,
         is_clean,
         total_changes,
     })
@@ -789,6 +897,9 @@ pub fn run() {
             stash_drop,
             get_stashes,
             sync_remote,
+            push,
+            pull,
+            fetch,
             get_commits,
             get_commit_files,
             get_commit_diff,

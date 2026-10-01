@@ -1050,9 +1050,11 @@ function setupEventListeners() {
     try {
       const res = await invoke('sync_remote');
       showToast(res || 'Synced with remote');
-      await refreshRepoInfo();
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([
+        refreshRepoInfo(),
+        refreshStatus(),
+        loadCommits()
+      ]);
     } catch (err) {
       showToast(`Sync failed: ${err}`, true);
     } finally {
@@ -1374,9 +1376,61 @@ async function handleMenuCommand(id) {
       openMergeModal();
       break;
     case 'push':
+      if (state.isSyncing) return;
+      state.isSyncing = true;
+      el.syncSpinner.style.animation = 'spin 1s linear infinite';
+      try {
+        const res = await invoke('push');
+        showToast(res || 'Pushed to origin');
+        await Promise.all([
+          refreshRepoInfo(),
+          refreshStatus(),
+          loadCommits()
+        ]);
+      } catch (err) {
+        showToast(`Push failed: ${err}`, true);
+      } finally {
+        state.isSyncing = false;
+        el.syncSpinner.style.animation = 'none';
+      }
+      break;
     case 'pull':
+      if (state.isSyncing) return;
+      state.isSyncing = true;
+      el.syncSpinner.style.animation = 'spin 1s linear infinite';
+      try {
+        const res = await invoke('pull');
+        showToast(res || 'Pulled from origin');
+        await Promise.all([
+          refreshRepoInfo(),
+          refreshStatus(),
+          loadCommits()
+        ]);
+      } catch (err) {
+        showToast(`Pull failed: ${err}`, true);
+      } finally {
+        state.isSyncing = false;
+        el.syncSpinner.style.animation = 'none';
+      }
+      break;
     case 'fetch':
-      el.syncBtn.click();
+      if (state.isSyncing) return;
+      state.isSyncing = true;
+      el.syncSpinner.style.animation = 'spin 1s linear infinite';
+      try {
+        const res = await invoke('fetch');
+        showToast(res || 'Fetched from origin');
+        await Promise.all([
+          refreshRepoInfo(),
+          refreshStatus(),
+          loadCommits()
+        ]);
+      } catch (err) {
+        showToast(`Fetch failed: ${err}`, true);
+      } finally {
+        state.isSyncing = false;
+        el.syncSpinner.style.animation = 'none';
+      }
       break;
     case 'view-repository-on-github':
       try {
