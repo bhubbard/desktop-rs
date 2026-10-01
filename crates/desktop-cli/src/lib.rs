@@ -27,6 +27,9 @@ pub enum Commands {
     /// Launch the interactive GitHub Desktop Terminal UI
     Tui,
 
+    /// Launch the native Tauri GUI application (GitHub Desktop)
+    Gui,
+
     /// Show repository status, branch, ahead/behind, and changed files
     Status,
 
@@ -208,6 +211,9 @@ pub async fn run() -> anyhow::Result<()> {
         }
         Some(Commands::Tui) => {
             desktop_tui::run_tui(git)?;
+        }
+        Some(Commands::Gui) => {
+            cmd_gui()?;
         }
         Some(Commands::Status) => {
             cmd_status(&git)?;
@@ -719,3 +725,21 @@ fn cmd_log(git: &GitClient, limit: usize) -> anyhow::Result<()> {
     println!();
     Ok(())
 }
+
+fn cmd_gui() -> anyhow::Result<()> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let gui_bin = dir.join("desktop-gui");
+            if gui_bin.exists() {
+                let _ = std::process::Command::new(gui_bin).spawn()?;
+                println!("  {} Launched GitHub Desktop GUI", "✓".green());
+                return Ok(());
+            }
+        }
+    }
+    // Fallback to searching PATH
+    let _ = std::process::Command::new("desktop-gui").spawn()?;
+    println!("  {} Launched GitHub Desktop GUI", "✓".green());
+    Ok(())
+}
+

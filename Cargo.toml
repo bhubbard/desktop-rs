@@ -6,6 +6,7 @@ members = [
     "crates/desktop-github",
     "crates/desktop-tui",
     "crates/desktop-cli",
+    "crates/desktop-gui/src-tauri",
 ]
 
 [workspace.package]
